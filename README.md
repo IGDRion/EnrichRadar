@@ -6,7 +6,26 @@
 This R shiny application allows to view the output of DESeq2 and make interactive filters over the data in an easy way. It is also able to produce an enrichment analysis via Gprofiler2 and return an interactive figure.
 
 ## Installation
-If you have it, simply open the script in R studio and click on "Run App" on the top right corner of the source panel. You can also run it using the command **runApp('path/to/app.R')**. If you don't have R studio, you can open a R session in a terminal, install & load or load the library "shiny", and then run the command **runApp('path/to/app.R')**. It should open the application on your browser.
+
+- Git clone the repository:
+
+```bash
+git clone https://github.com/IGDRion/deseq2-viewer.git
+```
+
+- Install the required R libraries using e.g. with `conda`
+
+```bash
+conda install conda-forge::r-shiny r::r-dt conda-forge::r-ggplot2  plotly::plotly conda-forge::r-gprofiler2 r-dipsaus conda-forge::r-dplyr
+```
+
+- Launch the app:
+
+```bash
+Rscript /path/to/app.R
+```
+
+It should open the application on your web browser : `http://127.0.0.1:7449`.
 
 ## Usage
 To load a DESeq2 output file, click on the browse button and select the file you would like to view.
@@ -18,7 +37,7 @@ Once the file is loaded, you can filter your data :
 - Gprofiler button generate an interactive graph with gprofiler2 (tool for multi-databases enrichment analysis) 
 
 ## Support
-If you are having any trouble with the application, contact **victor.lebars@univ-rennes1.fr**
+If you are having any trouble with the application, contact **victor.lebars@univ-rennes1.fr** or the dedicated [Github issue page](https://github.com/IGDRion/deseq2-viewer/issues).
 
 ## Authors and acknowledgment
 Author: Victor Le Bars
