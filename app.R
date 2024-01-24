@@ -5,6 +5,7 @@ if (!require(ggplot2)) install.packages("ggplot2")
 if (!require(plotly)) install.packages("plotly")
 if (!require(gprofiler2)) install.packages("gprofiler2")
 if (!require(dipsaus)) install.packages("dipsaus")
+if (!require(dplyr)) install.packages("dplyr")
 
 library(shiny)
 library(DT)
@@ -12,6 +13,7 @@ library(ggplot2)
 library(plotly)
 library(gprofiler2)
 library(dipsaus)
+library(dplyr)
 
 # Set the size limit of uploaded files
 options(shiny.maxRequestSize = 50*1024^2)
@@ -34,8 +36,9 @@ ui <- fluidPage(
       checkboxInput("KeepCodingGenes", "Show only protein coding genes", value = FALSE),
       checkboxInput("KeepKnownGenes", "Show only known genes", value = FALSE),
       downloadButton("downloadCSV", "Save current selection"),
-      
+      hr(),
       actionButtonStyled("launchGprofiler", "Gprofiler!", type="default"),
+      actionButtonStyled("launchVolcano", "VolcanoPlot!", type="default"),
       
       width = 3
     ),
@@ -129,8 +132,37 @@ server <- function(input, output, session) {
     })
   })
 
+  # Volcano plot
   
-}
+  observeEvent(input$launchVolcano, {
+    
+    volcano_data <- select(data(), log2FoldChange,padj,gene_annot,gene_biotype)
+    volcano_data$padj <- ifelse((volcano_data$padj == 0 | -log(volcano_data$padj) > 30), exp(-30), volcano_data$padj)
+    volcano_data$gene_biotype <- ifelse(is.na(volcano_data$gene_biotype), "other", volcano_data$gene_biotype)
+    
+    thresholdLOG2FC <- input$thresholdSliderLOG2FC
+    thresholdPADJ <- input$thresholdSliderPADJ
+    volcano_data$diff <- ifelse((volcano_data$log2FoldChange >= thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ),"UPPER", 
+                                ifelse((volcano_data$log2FoldChange <= 0-thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ), "UNDER", "NONE"))
+    volcano_data <- na.omit(volcano_data)
+    
+    VolcanoPlot <- ggplot(volcano_data, aes(x = log2FoldChange, y = -log(padj), shape = gene_biotype, fill = factor(diff), size = gene_annot)) +
+    geom_point(aes(stroke = .5)) +
+    labs(x = "Log2FC", y = "-Log(p.adj)", fill="Differential Expression", size="Origin", shape="Gene Biotype") +
+    guides(fill = guide_legend(override.aes = list(size = 3, shape=21)), shape = guide_legend(override.aes = list(size = 3))) +
+    scale_fill_manual(values = c("NONE"="#9E9E9E", "UNDER"="#56B4E9", "UPPER"="#D55E00")) +
+    scale_shape_manual(values = c("lncRNA" = 21 ,"protein_coding" = 23,"other" = 22)) +
+    theme(legend.text = element_text(size = 12),
+          aspect.ratio = 4/3,
+          legend.title = element_text(face = "bold", size = 14))
+  
+    VolcanoPlot <- VolcanoPlot + scale_x_continuous(limits = c(-max(abs(volcano_data$log2FoldChange)), max(abs(volcano_data$log2FoldChange))))
+    
+    output$plot <- renderUI({
+      renderPlot({VolcanoPlot})
+    })
+  })
 
+}
 # Run the application
 shinyApp(ui, server)
