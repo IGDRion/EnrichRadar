@@ -6,7 +6,6 @@ if (!require(plotly)) install.packages("plotly")
 if (!require(gprofiler2)) install.packages("gprofiler2")
 if (!require(dipsaus)) install.packages("dipsaus")
 if (!require(dplyr)) install.packages("dplyr")
-#if (!require(shinycssloaders)) install.packages("shinycssloaders")
 
 library(shiny)
 library(DT)
@@ -48,8 +47,8 @@ ui <- fluidPage(
       DTOutput("table"),
       hr(),
       fluidRow(
-        column(6, uiOutput("plot")),
-        column(6, uiOutput("plotPathways"))
+        column(5, uiOutput("plot")),
+        column(7, uiOutput("plotPathways"))
       ),
       DTOutput("gprofilerTable")
     )
@@ -164,8 +163,14 @@ server <- function(input, output, session) {
   
   
     # Barplot with all the terms/pathways
-    BarplotPathways <- ggplot(pathways_genes, aes(x=term_name, y=gene_count, fill=source)) +
-      geom_bar(stat="identity")
+    BarplotPathways <- ggplot(pathways_genes, aes(x=reorder(term_name, gene_count), y=gene_count, fill=source)) +
+      geom_bar(stat="identity") +
+      scale_fill_manual(values = c("GO:MF"="#E36148", "GO:CC"="#46AB4B", "GO:BP"="#FFAE48", "KEGG"="#DD4477", "REAC"="#3366CC", "TF"="#5674A6",
+                                   "MIRNA"="#23AB99", "HPA"="#6633CC", "CORUM"="#66AB01", "HP"="#9A0099", "WP"="#0099C6")) +
+      labs(x="", "Number of gene", title = "Enrichment terms/pathways") +
+      theme(legend.text = element_text(size = 12),
+            axis.text = element_text(size =12)
+            )
     
     output$plotPathways <- renderUI ({
       renderPlot({BarplotPathways + coord_flip()})
