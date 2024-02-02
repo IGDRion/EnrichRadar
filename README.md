@@ -36,6 +36,11 @@ Once the file is loaded, you can filter your data :
 - "Save current selection" button allows to save the dataframe with all the modification done to it (sorting of rows are not saved however)
 - Gprofiler button generate an interactive graph with gprofiler2 (tool for multi-databases enrichment analysis) 
 
+A Toy example is available to try the application : **ToyExample.csv**
+The data of for this example were extracted from [this analysis](https://www.ebi.ac.uk/gxa/experiments/E-GEOD-50760/Supplementary%20Information). It is a RNA-seq  analysis of 54 samples (normal colon, primary tumor, and liver metastases) from 18 colorectal cancer patients done by *Kim SK, Kim SY, Kim JH, Roh SA, Cho DH et al. (2014)* [A nineteen gene-based risk score classifier predicts prognosis of colorectal cancer patients](https://europepmc.org/abstract/MED/25049118). Out of this dataset, only colon and colon epithelium samples were kept, and their expression profile were compared using DESeq2 to produce the **ToyExample** csv dataset.  
+Please note that this dataset is not intended to be representative of a coherent analysis, but rather to be used to test the R shiny application.
+
+
 ## Support
 If you are having any trouble with the application, contact **victor.lebars@univ-rennes1.fr** or the dedicated [Github issue page](https://github.com/IGDRion/deseq2-viewer/issues).
 
