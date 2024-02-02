@@ -6,6 +6,7 @@ if (!require(plotly)) install.packages("plotly")
 if (!require(gprofiler2)) install.packages("gprofiler2")
 if (!require(dipsaus)) install.packages("dipsaus")
 if (!require(dplyr)) install.packages("dplyr")
+if (!require(shinyjs)) install.packages("shinyjs")
 
 library(shiny)
 library(DT)
@@ -14,12 +15,15 @@ library(plotly)
 library(gprofiler2)
 library(dipsaus)
 library(dplyr)
+library(shinyjs)
 
 # Set the size limit of uploaded files
 options(shiny.maxRequestSize = 50*1024^2)
 
 # Define UI
 ui <- fluidPage(
+  
+  useShinyjs(),  # Set up shinyjs
   
   titlePanel("DESeq2 Viewer"),
   
@@ -40,15 +44,18 @@ ui <- fluidPage(
       actionButtonStyled("launchGprofiler", "Gprofiler!", type="default"),
       actionButtonStyled("launchVolcano", "VolcanoPlot!", type="default"),
       
-      width = 3
+      width = 2
     ),
     
     mainPanel(
       DTOutput("table"),
       hr(),
       fluidRow(
-        column(5, uiOutput("plot")),
-        column(7, uiOutput("plotPathways"))
+        column(10, plotlyOutput("plotPathways")),
+        column(2, selectInput("nbTerm", tags$div("You have a lot of terms!", tags$br(),"Choose how many to display"),
+                              choices = c("20","30","40","ALL"),
+                              selected = "ALL",
+                              width = "200px")),
       ),
       DTOutput("gprofilerTable")
     )
@@ -57,6 +64,8 @@ ui <- fluidPage(
 
 # Define server logic
 server <- function(input, output, session) {
+  
+  shinyjs::hide("nbTerm")
   
   # Read CSV file
   data <- reactive({
@@ -111,9 +120,14 @@ server <- function(input, output, session) {
   
   # Gprofiler
   observeEvent(input$launchGprofiler, {
+    
     GprofilerGeneList <- filtered_data()[["geneID"]][1:nrow(filtered_data())]
       
     gostres <- gost(query = GprofilerGeneList, organism = "hsapiens", evcodes = TRUE)
+    
+    # Reset pathways table and plot in case gostres returns nothing, to not keep the display of the last gprofiler run
+    output$gprofilerTable <<- NULL
+    output$plotPathways <<- NULL
     
     # Plot
     output$plot <- renderUI({
@@ -122,60 +136,90 @@ server <- function(input, output, session) {
           HTML(
             as.character(div(style="color: orange", "No result to show, try with more genes / another set of genes"))
           )
+          
+          
         } else {
           gost_plot <- gostplot(gostres, capped = FALSE, interactive = TRUE)
           # Generate Gprofiler plot
           updateActionButtonStyled(session, "launchGprofiler", type="success")
-          renderPlotly(
-            gost_plot
-          )
+          #renderPlotly(
+            #gost_plot
+          #)
         }
     })
     
-    # Table by pathways with all genes associated
-    gostresDF <- as.data.frame(gostres$result)
+    if (!(is.null(gostres))) {
     
-    pathways_genes <- gostresDF %>% 
-      dplyr::select(term_name, source, p_value, intersection)
+      # Table by pathways with all genes associated
+      gostresDF <- as.data.frame(gostres$result)
+      
+      pathways_genes <- gostresDF %>% 
+        dplyr::select(term_name, source, p_value, intersection)
+      
+      # Get number of genes associated with each term/pathway element
+      gene_list <- pathways_genes$intersection
+      gene_nb <- sapply(strsplit(gene_list,","), length)
+      pathways_genes$gene_count <- gene_nb
+      
+      # Reorder dataframe
+      pathways_genes <- pathways_genes %>%
+        select(term_name, source, p_value, gene_count, intersection)
+      
+      # Sort dataframe with gene count by descending order
+      pathways_genes <- pathways_genes[order(-pathways_genes$gene_count),]
+      
+      # Print dataframe on screen
+      output$gprofilerTable <- renderDT({
+        datatable(pathways_genes, options = list(columnDefs = list(list(className = 'dt-center', targets = 3)),
+                                                 order = list(2, 'asc'),
+                                                 ordering = TRUE,
+                                                 pageLength = 5),
+                  rownames = FALSE) %>%
+          formatStyle(
+            target = 'row',
+            columns = "source",
+            backgroundColor = styleEqual(c("GO:MF", "GO:CC", "GO:BP", "KEGG", "REAC", "TF", "MIRNA", "HPA", "CORUM", "HP", "WP"),
+                                         c("#E361486D", "#46AB4B6D", "#FFAE486D", "#DD44776D", "#3366CC6D", "#5674A66D", "#23AB996D", "#6633CC6D", "#66AB016D", "#9A00996D", "#0099C66D")))
+      })
     
-    # Get number of genes associated with each term/pathway element
-    gene_list <- pathways_genes$intersection
-    gene_nb <- sapply(strsplit(gene_list,","), length)
-    pathways_genes$gene_count <- gene_nb
     
-    # Reorder dataframe
-    pathways_genes <- pathways_genes %>%
-      select(term_name, source, p_value, gene_count, intersection)
-    
-    # Print dataframe on screen
-    output$gprofilerTable <- renderDT({
-      datatable(pathways_genes, options = list(columnDefs = list(list(className = 'dt-center', targets = 3)),
-                                               order = list(2, 'asc'),
-                                               ordering = TRUE,
-                                               pageLength = 5),
-                rownames = FALSE) %>%
-        formatStyle(
-          target = 'row',
-          columns = "source",
-          backgroundColor = styleEqual(c("GO:MF", "GO:CC", "GO:BP", "KEGG", "REAC", "TF", "MIRNA", "HPA", "CORUM", "HP", "WP"),
-                                       c("#E361486D", "#46AB4B6D", "#FFAE486D", "#DD44776D", "#3366CC6D", "#5674A66D", "#23AB996D", "#6633CC6D", "#66AB016D", "#9A00996D", "#0099C66D")))
-    })
-  
-  
-    # Barplot with all the terms/pathways
-    BarplotPathways <- ggplot(pathways_genes, aes(x=reorder(term_name, gene_count), y=gene_count, fill=source)) +
-      geom_bar(stat="identity") +
-      scale_fill_manual(values = c("GO:MF"="#E36148", "GO:CC"="#46AB4B", "GO:BP"="#FFAE48", "KEGG"="#DD4477", "REAC"="#3366CC", "TF"="#5674A6",
-                                   "MIRNA"="#23AB99", "HPA"="#6633CC", "CORUM"="#66AB01", "HP"="#9A0099", "WP"="#0099C6")) +
-      labs(x="", "Number of gene", title = "Enrichment terms/pathways") +
-      theme(legend.text = element_text(size = 12),
-            axis.text = element_text(size =12)
-            )
-    
-    output$plotPathways <- renderUI ({
-      renderPlot({BarplotPathways + coord_flip()})
-    })
-    
+      # Barplot with all the terms/pathways
+      make_gprofiler_barplot <- function (pathways_genes_table) {
+        BarplotPathways <- ggplot(pathways_genes_table, aes(x=p_value, y=term_name, colour=source, size=gene_count)) +
+          geom_point(stat="identity") +
+          guides(colour = guide_legend(override.aes = list(size = 7))) +
+          scale_colour_manual(name = "Source", values = c("GO:MF"="#E36148", "GO:CC"="#46AB4B", "GO:BP"="#FFAE48", "KEGG"="#DD4477", "REAC"="#3366CC", "TF"="#5674A6",
+                                       "MIRNA"="#23AB99", "HPA"="#6633CC", "CORUM"="#66AB01", "HP"="#9A0099", "WP"="#0099C6")) +
+          labs(x = "p-value", y = "", legend = "Source", title = "Enrichment terms/pathways", size = "Gene count", colour = "Source") +
+          theme(legend.text = element_text(size = 9),
+                legend.title = element_text(size = 11),
+                axis.title.x = element_text(size = 11),
+                axis.text = element_text(size = 9) 
+                )
+      
+        return(ggplotly(BarplotPathways + scale_x_reverse()))
+      }
+      
+     
+      # Button to reduce number of genes on the enrichment terms/pathways barplot if there are too many
+      if (nrow(pathways_genes) > 50) {
+        shinyjs::show("nbTerm")
+        observe ({
+          output$plotPathways <- renderPlotly ({
+            nbTerm_value <- as.integer(input$nbTerm)
+            if (input$nbTerm == "ALL") {
+              nbTerm_value = nrow(pathways_genes)
+            }
+            make_gprofiler_barplot(pathways_genes[1:nbTerm_value,])
+          })
+        })
+      } else {
+        shinyjs::hide("nbTerm")
+        output$plotPathways <- renderPlotly ({
+          make_gprofiler_barplot(pathways_genes)
+        })
+      }
+    }
   })
   
   # Volcano plot
