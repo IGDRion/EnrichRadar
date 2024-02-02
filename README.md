@@ -16,7 +16,7 @@ git clone https://github.com/IGDRion/deseq2-viewer.git
 - Install the required R libraries using e.g. with `conda`
 
 ```bash
-conda install conda-forge::r-shiny r::r-dt conda-forge::r-ggplot2  plotly::plotly conda-forge::r-gprofiler2 r-dipsaus conda-forge::r-dplyr
+conda install conda-forge::r-shiny r::r-dt conda-forge::r-ggplot2  plotly::plotly conda-forge::r-gprofiler2 r-dipsaus conda-forge::r-dplyr conda-forge::r-shinyjs
 ```
 
 - Launch the app:
