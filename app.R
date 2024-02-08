@@ -7,8 +7,9 @@ if (!require(gprofiler2)) install.packages("gprofiler2")
 if (!require(dipsaus)) install.packages("dipsaus")
 if (!require(dplyr)) install.packages("dplyr")
 if (!require(shinyjs)) install.packages("shinyjs")
+if (!require(cowplot)) install.packages("cowplot")
 if (!require(grid)) install.packages("grid")
-if (!require(ggplotify)) install.packages("ggplotify")
+if (!require(fgsea)) install.packages("fgsea")
 
 library(shiny)
 library(DT)
@@ -18,14 +19,22 @@ library(gprofiler2)
 library(dipsaus)
 library(dplyr)
 library(shinyjs)
-library(ggplotify)
+library(cowplot)
 library(grid)
+library(fgsea)
 
 # Set the size limit of uploaded files
 options(shiny.maxRequestSize = 50*1024^2)
 
+css <- HTML("
+  .row .pad-top {
+     padding-top:25px;
+  }
+")
+
 # Define UI
 ui <- fluidPage(
+  tags$head(tags$style(css)), # Set up css
   
   useShinyjs(),  # Set up shinyjs
   
@@ -45,8 +54,6 @@ ui <- fluidPage(
       checkboxInput("KeepKnownGenes", "Show only known genes", value = FALSE),
       downloadButton("downloadCSV", "Save current selection"),
       hr(),
-      actionButtonStyled("launchGprofiler", "Gprofiler!", type="default"),
-      actionButtonStyled("launchVolcano", "VolcanoPlot!", type="default"),
       
       width = 2
     ),
@@ -55,17 +62,42 @@ ui <- fluidPage(
       DTOutput("table"),
       hr(),
       fluidRow(
+        column(12, actionButtonStyled("launchVolcano", "VolcanoPlot!", type="default"), align = "center"),
+      ),
+      fluidRow(
         column(9, uiOutput("plotVolcano")),
         column(3, plotOutput("legendVolcano"))
       ),
+      hr(),
       fluidRow(
-        column(10, uiOutput("plotPathways")),
-        column(2, selectInput("nbTerm", tags$div("You have a lot of terms!", tags$br(),"Choose how many to display"),
-                              choices = c("20","30","40","ALL"),
-                              selected = "ALL",
-                              width = "200px")),
+        column(12, actionButtonStyled("launchGprofiler", "Gprofiler!", type="default"), align = "center"),
       ),
-      DTOutput("gprofilerTable")
+      tabsetPanel(id="TabsetGprofiler",
+        tabPanel("Plot", fluidRow(
+          column(10, uiOutput("plotPathways")),
+          column(2, selectInput("nbTerm", tags$div("You have a lot of terms!", tags$br(),"Choose how many to display"),
+                                choices = c("20","30","40","ALL"),
+                                selected = "ALL",
+                                width = "200px")))),
+        tabPanel("Table", DTOutput("gprofilerTable"))
+      ),
+      hr(),
+      fluidRow(
+        column(6,actionButtonStyled("launchFGSEA", "GSEA!", type="default"), align = "right", class = "pad-top"),
+        column(6,selectInput("chooseGSEADB", "Please choose a database",
+                             choices = c("20","30","40","ALL"),
+                             selected = "ALL",
+                             width = "200px"), align = "left"),
+      ),
+      tabsetPanel(id="TabsetGSEA",
+        tabPanel("Plots", fluidRow(
+          column(6, plotOutput("barplotGSEA")),
+          column(6, plotOutput("lineplotGSEA"))
+        )),
+        tabPanel("Table", DTOutput("fgseaTable"))
+      ),
+      
+      hr()
     )
   )
 )
@@ -73,6 +105,19 @@ ui <- fluidPage(
 # Define server logic
 server <- function(input, output, session) {
   
+  # Hide buttons until data is loaded
+  shinyjs::hide("launchVolcano")
+  shinyjs::hide("launchGprofiler")
+  shinyjs::hide("launchFGSEA")
+  shinyjs::hide("chooseGSEADB")
+  
+  # Hide tabset and volcano plot space until buttons are clicked
+  shinyjs::hide("plotVolcano")
+  shinyjs::hide("legendVolcano")
+  shinyjs::hide("TabsetGprofiler")
+  shinyjs::hide("TabsetGSEA")
+  
+  # Hide button to select how much term are displayed in gprofiler plot until condition is met (nbTerm > 50)
   shinyjs::hide("nbTerm")
   
   # Read CSV file
@@ -80,6 +125,15 @@ server <- function(input, output, session) {
     req(input$csv)
     read.csv(input$csv$datapath)
   })
+  
+  observe(
+    if (!is.null(data())){
+      shinyjs::show("launchVolcano")
+      shinyjs::show("launchGprofiler")
+      shinyjs::show("launchFGSEA")
+      shinyjs::show("chooseGSEADB")
+    }
+  )
   
   # Create a reactive expression for filtered data
   filtered_data <- reactive({
@@ -126,9 +180,13 @@ server <- function(input, output, session) {
     }
   )
   
-  # Gprofiler
+  
+  ###################################
+  # Gprofiler #
+  ##################################
   observeEvent(input$launchGprofiler, {
     
+    # Prepare and launch Gprofiler
     GprofilerGeneList <- filtered_data()[["geneID"]][1:nrow(filtered_data())]
       
     gostres <- gost(query = GprofilerGeneList, organism = "hsapiens", evcodes = TRUE)
@@ -144,15 +202,12 @@ server <- function(input, output, session) {
           HTML(
             as.character(div(style="color: orange", "No result to show, try with more genes / another set of genes"))
           )
-          
+          shinyjs::show("TabsetGprofiler")
           
         } else {
           gost_plot <- gostplot(gostres, capped = FALSE, interactive = TRUE)
           # Generate Gprofiler plot
           updateActionButtonStyled(session, "launchGprofiler", type="success")
-          #renderPlotly(
-            #gost_plot
-          #)
         }
     })
     
@@ -168,6 +223,9 @@ server <- function(input, output, session) {
       gene_list <- pathways_genes$intersection
       gene_nb <- sapply(strsplit(gene_list,","), length)
       pathways_genes$gene_count <- gene_nb
+      
+      # Put a space after each coma in intersection column, to improve visualisation in dataframe
+      pathways_genes$intersection <- gsub(",", ", ", pathways_genes$intersection)
       
       # Reorder dataframe
       pathways_genes <- pathways_genes %>%
@@ -210,7 +268,6 @@ server <- function(input, output, session) {
         return (plotlyPlot)
       }
       
-     
       # Button to reduce number of genes on the enrichment terms/pathways barplot if there are too many
       if (nrow(pathways_genes) > 50) {
         shinyjs::show("nbTerm")
@@ -234,10 +291,15 @@ server <- function(input, output, session) {
         })
       }
     }
+    
+    # Make Gprofiler tabset appear 
+      shinyjs::show("TabsetGprofiler")
   })
   
   
+  ###################################
   # Volcano plot
+  ###################################
   observeEvent(input$launchVolcano, {
     
     volcano_data <- select(data(), log2FoldChange,padj,gene_annot,gene_biotype,geneID,gene_name)
@@ -285,6 +347,102 @@ server <- function(input, output, session) {
     output$legendVolcano <- renderPlot({
       grid.draw(VolcanoLegend)
     })
+    
+    shinyjs::show("plotVolcano")
+    shinyjs::show("legendVolcano")
+    
+  })
+  
+  
+  ###################################
+  # GSEA analysis with fgsea package
+  ###################################
+  observeEvent(input$launchFGSEA, {
+    
+    # Log2FC for each genes (vector of Log2FC with genes ID associated as names)
+    genes <- select(data(), gene_name, log2FoldChange)
+    genes <- na.omit(genes)
+    genes <- genes[order(genes$log2FoldChange, decreasing=TRUE),]
+    
+    ordered_gene_name <- genes$gene_name
+    genes$gene_name <- NULL
+    genes <- as.vector(genes$log2FoldChange)
+    
+    names(genes) <- ordered_gene_name
+    
+
+    # Import a pathway database and convert it into a table 
+    processDB = function(DB){
+      pathways=strsplit(scan(DB,sep="\n",what="character"),"\t")
+      names(pathways)=sapply(pathways,function(x)x[1])
+      pathways=lapply(pathways,function(x)x[3:length(x)])
+      return(pathways)
+    }
+    
+    pathways <- processDB("/Users/Victor/KEGG_2021_Human.txt")
+    
+    
+    # Define min and max number of genes associated with a pathway
+    minSize = 3
+    maxSize = 200
+  
+    # Launching GSEA analysis
+    fgseaRes = data.frame(fgsea(pathways, genes, minSize=minSize, maxSize=maxSize))
+    
+    # Recovery of results
+    cutpval = 0.05
+    fdr = FALSE
+
+    pv = ifelse(fdr == TRUE,"padj","pval")
+    res = fgseaRes[which(fgseaRes[,pv] < cutpval),c("pathway", "padj","pval", "ES", "leadingEdge", "NES")]
+    res$genes = unlist(lapply(res$leadingEdge, function(x) paste(x, collapse = ", ")))
+    res = res[,c("pathway", pv, "ES","NES", "genes")]
+    
+    respos = res[res[,"ES"]>0,]
+    respos = respos[order(respos[,pv], decreasing = FALSE),]
+    
+    resneg = res[res[,"ES"]<0,]
+    resneg = resneg[order(resneg[,pv], decreasing = FALSE),]
+    
+    # Barplot
+    showCategory = 20
+    respos_plot <- respos[1:min(showCategory, nrow(respos)),]
+    resneg_plot <- resneg[1:min(showCategory, nrow(resneg)),]
+    
+    res_plot <- rbind(respos_plot, resneg_plot)
+    res_plot[,"pval"]<- res_plot[,pv]
+    res_plot <- res_plot[order(res_plot[,"pval"], decreasing = TRUE),]
+    res_plot$pathway <- gsub(" [(]GO:[0-9]+[)]", "", res_plot$pathway)
+    res_plot$pathway <- factor(res_plot$pathway, levels=res_plot$pathway)
+    p <- ggplot(res_plot, aes(x=pathway, y=-log10(pval), fill =NES))+
+      geom_bar(stat='identity') + 
+      scale_fill_gradient2(midpoint = 0, low = "blue", mid = "white", high = "red", limits=c(min(res_plot$NES), max(res_plot$NES))) +
+      coord_flip() +
+      theme(axis.text.y = element_text(size = 12))
+    
+    
+    # GSEA plot
+    pathway_selection <- as.character(res_plot[order(res_plot$pval, decreasing = FALSE),"pathway"])
+    p2 <- plotGseaTable(pathways[pathway_selection], genes, fgseaRes, gseaParam=0.5,
+                        axisLabelStyle = list(size=12))
+    
+    # render GSEA Barplot
+    output$barplotGSEA <- renderPlot({
+      p
+    })
+    
+    # render GSEA plot
+    output$lineplotGSEA <- renderPlot({
+      p2
+    })
+    
+    # render the GSEA table
+    output$fgseaTable <- renderDT({
+      datatable(res, options = list(ordering = TRUE, order = list(1, 'asc'), pageLength = 5), rownames = FALSE)
+    })
+    
+    # Make Gprofiler tabset appear
+    shinyjs::show("TabsetGSEA")
     
   })
 
