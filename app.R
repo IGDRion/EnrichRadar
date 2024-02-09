@@ -7,8 +7,7 @@ if (!require(gprofiler2)) install.packages("gprofiler2")
 if (!require(dipsaus)) install.packages("dipsaus")
 if (!require(dplyr)) install.packages("dplyr")
 if (!require(shinyjs)) install.packages("shinyjs")
-if (!require(cowplot)) install.packages("cowplot")
-if (!require(grid)) install.packages("grid")
+if (!require(ggpubr)) install.packages("ggpubr")
 if (!require(fgsea)) install.packages("fgsea")
 
 library(shiny)
@@ -19,8 +18,7 @@ library(gprofiler2)
 library(dipsaus)
 library(dplyr)
 library(shinyjs)
-library(cowplot)
-library(grid)
+library(ggpubr)
 library(fgsea)
 
 # Set the size limit of uploaded files
@@ -85,8 +83,7 @@ ui <- fluidPage(
       fluidRow(
         column(6,actionButtonStyled("launchFGSEA", "GSEA!", type="default"), align = "right", class = "pad-top"),
         column(6,selectInput("chooseGSEADB", "Please choose a database",
-                             choices = c("20","30","40","ALL"),
-                             selected = "ALL",
+                             choices = c("GO:MF","GO:CC","GO:BP","KEGG","REACTOME","WikiPathways","TRANSFAC & JASPAR PWMs","miRTarBase","CORUM","Human Phenotype Ontology"),
                              width = "200px"), align = "left"),
       ),
       tabsetPanel(id="TabsetGSEA",
@@ -196,100 +193,97 @@ server <- function(input, output, session) {
     output$plotPathways <<- NULL
     
     # Plot
-    output$plot <- renderUI({
-        if (is.null(gostres) == TRUE) {
-          updateActionButtonStyled(session, "launchGprofiler", type="warning")
-          HTML(
-            as.character(div(style="color: orange", "No result to show, try with more genes / another set of genes"))
-          )
-          shinyjs::show("TabsetGprofiler")
+    if (is.null(gostres) == TRUE) {
+      shinyjs::show("TabsetGprofiler")
+      updateActionButtonStyled(session, "launchGprofiler", type="warning")
+      output$plotPathways <- renderUI({
+        HTML(
+          as.character(div(style="color: orange", "No result to show, try with more genes / another set of genes"))
+        )
+      })   
           
-        } else {
-          gost_plot <- gostplot(gostres, capped = FALSE, interactive = TRUE)
-          # Generate Gprofiler plot
-          updateActionButtonStyled(session, "launchGprofiler", type="success")
-        }
-    })
-    
-    if (!(is.null(gostres))) {
-    
-      # Table by pathways with all genes associated
-      gostresDF <- as.data.frame(gostres$result)
-      
-      pathways_genes <- gostresDF %>% 
-        dplyr::select(term_name, source, p_value, intersection)
-      
-      # Get number of genes associated with each term/pathway element
-      gene_list <- pathways_genes$intersection
-      gene_nb <- sapply(strsplit(gene_list,","), length)
-      pathways_genes$gene_count <- gene_nb
-      
-      # Put a space after each coma in intersection column, to improve visualisation in dataframe
-      pathways_genes$intersection <- gsub(",", ", ", pathways_genes$intersection)
-      
-      # Reorder dataframe
-      pathways_genes <- pathways_genes %>%
-        select(term_name, source, p_value, gene_count, intersection)
-      
-      # Print dataframe on screen
-      output$gprofilerTable <- renderDT({
-        datatable(pathways_genes, options = list(columnDefs = list(list(className = 'dt-center', targets = 3)),
-                                                 order = list(2, 'asc'),
-                                                 ordering = TRUE,
-                                                 pageLength = 5),
-                  rownames = FALSE) %>%
-          formatStyle(
-            target = 'row',
-            columns = "source",
-            backgroundColor = styleEqual(c("GO:MF", "GO:CC", "GO:BP", "KEGG", "REAC", "TF", "MIRNA", "HPA", "CORUM", "HP", "WP"),
-                                         c("#E361486D", "#46AB4B6D", "#FFAE486D", "#DD44776D", "#3366CC6D", "#5674A66D", "#23AB996D", "#6633CC6D", "#66AB016D", "#9A00996D", "#0099C66D")))
-      })
-    
-    
-      # Barplot with all the terms/pathways
-      make_gprofiler_point <- function (pathways_genes_table) {
-        BarplotPathways <- ggplot(pathways_genes_table, aes(x=p_value, y=reorder(term_name,-p_value), colour=source, size=gene_count, text=paste0("Term name: ",term_name, "<br>Source: ",source, "<br>p-value: ",p_value, "<br>Gene Count: ",gene_count))) +
-          geom_point(stat="identity") +
-          scale_colour_manual(name = "Source", values = c("GO:MF"="#E36148", "GO:CC"="#46AB4B", "GO:BP"="#FFAE48", "KEGG"="#DD4477", "REAC"="#3366CC", "TF"="#5674A6",
-                                       "MIRNA"="#23AB99", "HPA"="#6633CC", "CORUM"="#66AB01", "HP"="#9A0099", "WP"="#0099C6")) +
-          labs(x = "p-value", y = "", legend = "Source", title = "Enrichment terms/pathways", size = "", colour = "  Source") +
-          theme(legend.text = element_text(size = 9),
-                legend.title = element_text(size = 14),
-                axis.title.x = element_text(size = 14),
-                axis.text = element_text(size = 9) 
-                )
-      
-        plotlyPlot <- ggplotly(BarplotPathways + scale_x_reverse(),
-                          tooltip = "text") # Control what is display in the point label
+    } else {
+        gost_plot <- gostplot(gostres, capped = FALSE, interactive = TRUE)
+        # Generate Gprofiler plot
+        updateActionButtonStyled(session, "launchGprofiler", type="success")
         
-        plotlyPlot <- plotlyPlot %>%
-          layout(legend = list(itemsizing = "constant")) # Control size of points in legend
-                 
-        return (plotlyPlot)
-      }
-      
-      # Button to reduce number of genes on the enrichment terms/pathways barplot if there are too many
-      if (nrow(pathways_genes) > 50) {
-        shinyjs::show("nbTerm")
-        observe ({
-          output$plotPathways <- renderUI({ 
-            renderPlotly ({
-              nbTerm_value <- as.integer(input$nbTerm)
-              if (input$nbTerm == "ALL") {
-                nbTerm_value = nrow(pathways_genes)
-              }
-              make_gprofiler_point(pathways_genes[1:nbTerm_value,])
+        # Table by pathways with all genes associated
+        gostresDF <- as.data.frame(gostres$result)
+        
+        pathways_genes <- gostresDF %>% 
+          dplyr::select(term_name, source, p_value, intersection)
+        
+        # Get number of genes associated with each term/pathway element
+        gene_list <- pathways_genes$intersection
+        gene_nb <- sapply(strsplit(gene_list,","), length)
+        pathways_genes$gene_count <- gene_nb
+        
+        # Put a space after each coma in intersection column, to improve visualisation in dataframe
+        pathways_genes$intersection <- gsub(",", ", ", pathways_genes$intersection)
+        
+        # Reorder dataframe
+        pathways_genes <- pathways_genes %>%
+          select(term_name, source, p_value, gene_count, intersection)
+        
+        # Print dataframe on screen
+        output$gprofilerTable <- renderDT({
+          datatable(pathways_genes, options = list(columnDefs = list(list(className = 'dt-center', targets = 3)),
+                                                   order = list(2, 'asc'),
+                                                   ordering = TRUE,
+                                                   pageLength = 5),
+                    rownames = FALSE) %>%
+            formatStyle(
+              target = 'row',
+              columns = "source",
+              backgroundColor = styleEqual(c("GO:MF", "GO:CC", "GO:BP", "KEGG", "REAC", "TF", "MIRNA", "HPA", "CORUM", "HP", "WP"),
+                                           c("#E361486D", "#46AB4B6D", "#FFAE486D", "#DD44776D", "#3366CC6D", "#5674A66D", "#23AB996D", "#6633CC6D", "#66AB016D", "#9A00996D", "#0099C66D")))
+        })
+        
+        
+        # Barplot with all the terms/pathways
+        make_gprofiler_point <- function (pathways_genes_table) {
+          BarplotPathways <- ggplot(pathways_genes_table, aes(x=p_value, y=reorder(term_name,-p_value), colour=source, size=gene_count, text=paste0("Term name: ",term_name, "<br>Source: ",source, "<br>p-value: ",p_value, "<br>Gene Count: ",gene_count))) +
+            geom_point(stat="identity") +
+            scale_colour_manual(name = "Source", values = c("GO:MF"="#E36148", "GO:CC"="#46AB4B", "GO:BP"="#FFAE48", "KEGG"="#DD4477", "REAC"="#3366CC", "TF"="#5674A6",
+                                                            "MIRNA"="#23AB99", "HPA"="#6633CC", "CORUM"="#66AB01", "HP"="#9A0099", "WP"="#0099C6")) +
+            labs(x = "p-value", y = "", legend = "Source", title = "Enrichment terms/pathways", size = "", colour = "  Source") +
+            theme(legend.text = element_text(size = 9),
+                  legend.title = element_text(size = 14),
+                  axis.title.x = element_text(size = 14),
+                  axis.text = element_text(size = 9) 
+            )
+          
+          plotlyPlot <- ggplotly(BarplotPathways + scale_x_reverse(),
+                                 tooltip = "text") # Control what is display in the point label
+          
+          plotlyPlot <- plotlyPlot %>%
+            layout(legend = list(itemsizing = "constant")) # Control size of points in legend
+          
+          return (plotlyPlot)
+        }
+        
+        # Button to reduce number of genes on the enrichment terms/pathways barplot if there are too many
+        if (nrow(pathways_genes) > 50) {
+          shinyjs::show("nbTerm")
+          observe ({
+            output$plotPathways <- renderUI({ 
+              renderPlotly ({
+                nbTerm_value <- as.integer(input$nbTerm)
+                if (input$nbTerm == "ALL") {
+                  nbTerm_value = nrow(pathways_genes)
+                }
+                make_gprofiler_point(pathways_genes[1:nbTerm_value,])
+              })
             })
           })
-        })
-      } else {
-        shinyjs::hide("nbTerm")
-        output$plotPathways <- renderUI({
-          renderPlotly ({
-            make_gprofiler_point(pathways_genes)
+        } else {
+          shinyjs::hide("nbTerm")
+          output$plotPathways <- renderUI({
+            renderPlotly ({
+              make_gprofiler_point(pathways_genes)
+            })
           })
-        })
-      }
+        }
     }
     
     # Make Gprofiler tabset appear 
@@ -345,7 +339,7 @@ server <- function(input, output, session) {
     })
     # Print legend
     output$legendVolcano <- renderPlot({
-      grid.draw(VolcanoLegend)
+      as_ggplot(VolcanoLegend)
     })
     
     shinyjs::show("plotVolcano")
@@ -379,7 +373,30 @@ server <- function(input, output, session) {
       return(pathways)
     }
     
-    pathways <- processDB("/Users/Victor/KEGG_2021_Human.txt")
+    # Changing the database used for GSEA analysis
+    if (input$chooseGSEADB == "GO:MF"){
+      file <- "GO_Molecular_Function_2023.txt"
+    } else if (input$chooseGSEADB == "GO:CC"){
+      file <- "GO_Cellular_Component_2023.txt"
+    } else if (input$chooseGSEADB == "GO:BP"){
+      file <- "GO_Biological_Process_2023.txt"
+    } else if (input$chooseGSEADB == "KEGG"){
+      file <- "KEGG_2021_Human.txt"
+    } else if (input$chooseGSEADB == "REACTOME"){
+      file <- "Reactome_2022.txt"
+    } else if (input$chooseGSEADB == "WikiPathways"){
+      file <- "WikiPathway_2023_Human.txt"
+    } else if (input$chooseGSEADB == "TRANSFAC & JASPAR PWMs"){
+      file <- "TRANSFAC_and_JASPAR_PWMs.txt"
+    } else if (input$chooseGSEADB == "miRTarBase"){
+      file <- "miRTarBase_2017.txt"
+    } else if (input$chooseGSEADB == "CORUM"){
+      file <- "CORUM.txt"
+    } else if (input$chooseGSEADB == "Human Phenotype Ontology"){
+      file <- "Human_Phenotype_Ontology.txt"
+    }
+    
+    pathways <- processDB(paste0("/Users/Victor/",file))
     
     
     # Define min and max number of genes associated with a pathway
