@@ -9,6 +9,7 @@ if (!require(dplyr)) install.packages("dplyr")
 if (!require(shinyjs)) install.packages("shinyjs")
 if (!require(ggpubr)) install.packages("ggpubr")
 if (!require(fgsea)) install.packages("fgsea")
+if (!require(stringr)) install.packages("stringr")
 
 library(shiny)
 library(DT)
@@ -20,6 +21,7 @@ library(dplyr)
 library(shinyjs)
 library(ggpubr)
 library(fgsea)
+library(stringr)
 
 # Set the size limit of uploaded files
 options(shiny.maxRequestSize = 50*1024^2)
@@ -68,7 +70,11 @@ ui <- fluidPage(
       ),
       hr(),
       fluidRow(
-        column(12, actionButtonStyled("launchGprofiler", "Gprofiler!", type="default"), align = "center"),
+        column(6, actionButtonStyled("launchGprofiler", "Gprofiler!", type="default"), align = "right", class = "pad-top"),
+        column(6,selectInput("chooseOrganism", "Please choose your specie",
+                             choices = c("Human","Dog"),
+                             selected = "Human",
+                             width = "200px"), align = "left"),
       ),
       tabsetPanel(id="TabsetGprofiler",
         tabPanel("Plot", fluidRow(
@@ -105,6 +111,7 @@ server <- function(input, output, session) {
   # Hide buttons until data is loaded
   shinyjs::hide("launchVolcano")
   shinyjs::hide("launchGprofiler")
+  shinyjs::hide("chooseOrganism")
   shinyjs::hide("launchFGSEA")
   shinyjs::hide("chooseGSEADB")
   
@@ -127,6 +134,7 @@ server <- function(input, output, session) {
     if (!is.null(data())){
       shinyjs::show("launchVolcano")
       shinyjs::show("launchGprofiler")
+      shinyjs::show("chooseOrganism")
       shinyjs::show("launchFGSEA")
       shinyjs::show("chooseGSEADB")
     }
@@ -156,7 +164,7 @@ server <- function(input, output, session) {
       filtered_data <- filtered_data[filtered_data$gene_biotype == "protein_coding",]
     }
     if (input$KeepKnownGenes == TRUE) {
-      filtered_data <- filtered_data[startsWith(filtered_data$geneID,"ENSG"),]
+      filtered_data <- filtered_data[startsWith(filtered_data$geneID,"ENS"),]
     }
     
     return(filtered_data)
@@ -178,15 +186,81 @@ server <- function(input, output, session) {
   )
   
   
+  
+  ###################################
+  # Volcano plot
+  ###################################
+  observeEvent(input$launchVolcano, {
+    
+    volcano_data <- select(data(), log2FoldChange,padj,gene_annot,gene_biotype,geneID,gene_name)
+    volcano_data$padj <- ifelse((volcano_data$padj == 0 | -log(volcano_data$padj) > 30), exp(-30), volcano_data$padj)
+    volcano_data$gene_biotype <- ifelse(is.na(volcano_data$gene_biotype), "other", volcano_data$gene_biotype)
+    
+    thresholdLOG2FC <- input$thresholdSliderLOG2FC
+    thresholdPADJ <- input$thresholdSliderPADJ
+    volcano_data$diff <- ifelse((volcano_data$log2FoldChange >= thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ),"UPPER", 
+                                ifelse((volcano_data$log2FoldChange <= 0-thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ), "UNDER", "NONE"))
+    
+    volcano_data <- filter(volcano_data, diff != "NONE")
+    volcano_data <- volcano_data[complete.cases(volcano_data$padj,volcano_data$log2FoldChange,volcano_data$gene_annot,volcano_data$gene_biotype),]
+    
+    VolcanoPlot <- ggplot(volcano_data, aes(x = log2FoldChange, y = -log(padj), shape = gene_biotype, fill = factor(diff), size = gene_annot, 
+                                            text = paste0("GeneID: ",geneID, "<br>Gene name: ",gene_name, "<br>Log2FoldChange: ",log2FoldChange, "<br>p-adjusted: ",padj))) +
+      geom_point(aes(stroke = .2)) +
+      # add some lines
+      geom_vline(xintercept = thresholdLOG2FC, linetype = "dashed", color = "grey") +
+      geom_vline(xintercept = 0-thresholdLOG2FC, linetype = "dashed", color = "grey") +
+      geom_vline(xintercept = 0, color = "black") +
+      labs(x = "Log2FC", y = "-Log(p.adj)", fill="Differential Expression", size="Origin", shape="Gene Biotype") +
+      guides(fill = guide_legend(override.aes = list(size = 6, shape=21)), shape = guide_legend(override.aes = list(size = 6))) +
+      scale_fill_manual(values = c("UNDER"="#56B4E9", "UPPER"="#D55E00")) +
+      scale_shape_manual(values = c("lncRNA" = 21 ,"protein_coding" = 23,"other" = 22)) +
+      theme(legend.text = element_text(size = 16),
+            legend.title = element_text(face = "bold", size = 18))
+    
+    # Extract legend to keep the ggplot type of legend
+    VolcanoLegend <- get_legend(VolcanoPlot) 
+    
+    # Declare limits of the plot & delete legend 
+    VolcanoPlot <- VolcanoPlot + scale_x_continuous(limits = c(-max(abs(volcano_data$log2FoldChange)), max(abs(volcano_data$log2FoldChange)))) +
+      theme(legend.position="none")
+    
+    # Transform into plotly object
+    VolcanoPlot <- ggplotly(VolcanoPlot,
+                            tooltip = "text")
+    
+    # Print plot
+    output$plotVolcano <- renderUI({
+      renderPlotly({VolcanoPlot})
+    })
+    # Print legend
+    output$legendVolcano <- renderPlot({
+      as_ggplot(VolcanoLegend)
+    })
+    
+    shinyjs::show("plotVolcano")
+    shinyjs::show("legendVolcano")
+    
+  })
+  
+  
+  
   ###################################
   # Gprofiler #
   ##################################
   observeEvent(input$launchGprofiler, {
     
+    # Specie to use for gprofiler
+    if (input$chooseOrganism == "Human"){
+      specie <- "hsapiens"
+    } else if (input$chooseOrganism == "Dog"){
+      specie <- "clfamiliaris"
+    }
+    
     # Prepare and launch Gprofiler
     GprofilerGeneList <- filtered_data()[["geneID"]][1:nrow(filtered_data())]
       
-    gostres <- gost(query = GprofilerGeneList, organism = "hsapiens", evcodes = TRUE)
+    gostres <- gost(query = GprofilerGeneList, organism = specie, evcodes = TRUE)
     
     # Reset pathways table and plot in case gostres returns nothing, to not keep the display of the last gprofiler run
     output$gprofilerTable <<- NULL
@@ -203,9 +277,9 @@ server <- function(input, output, session) {
       })   
           
     } else {
-        gost_plot <- gostplot(gostres, capped = FALSE, interactive = TRUE)
+        updateActionButtonStyled(session, "launchGprofiler", type="default")
         # Generate Gprofiler plot
-        updateActionButtonStyled(session, "launchGprofiler", type="success")
+        gost_plot <- gostplot(gostres, capped = FALSE, interactive = TRUE)
         
         # Table by pathways with all genes associated
         gostresDF <- as.data.frame(gostres$result)
@@ -289,63 +363,7 @@ server <- function(input, output, session) {
     # Make Gprofiler tabset appear 
       shinyjs::show("TabsetGprofiler")
   })
-  
-  
-  ###################################
-  # Volcano plot
-  ###################################
-  observeEvent(input$launchVolcano, {
-    
-    volcano_data <- select(data(), log2FoldChange,padj,gene_annot,gene_biotype,geneID,gene_name)
-    volcano_data$padj <- ifelse((volcano_data$padj == 0 | -log(volcano_data$padj) > 30), exp(-30), volcano_data$padj)
-    volcano_data$gene_biotype <- ifelse(is.na(volcano_data$gene_biotype), "other", volcano_data$gene_biotype)
-    
-    thresholdLOG2FC <- input$thresholdSliderLOG2FC
-    thresholdPADJ <- input$thresholdSliderPADJ
-    volcano_data$diff <- ifelse((volcano_data$log2FoldChange >= thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ),"UPPER", 
-                                ifelse((volcano_data$log2FoldChange <= 0-thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ), "UNDER", "NONE"))
-    
-    volcano_data <- filter(volcano_data, diff != "NONE")
-    volcano_data <- volcano_data[complete.cases(volcano_data$padj,volcano_data$log2FoldChange,volcano_data$gene_annot,volcano_data$gene_biotype),]
-    
-    VolcanoPlot <- ggplot(volcano_data, aes(x = log2FoldChange, y = -log(padj), shape = gene_biotype, fill = factor(diff), size = gene_annot, 
-                                            text = paste0("GeneID: ",geneID, "<br>Gene name: ",gene_name, "<br>Log2FoldChange: ",log2FoldChange, "<br>p-adjusted: ",padj))) +
-    geom_point(aes(stroke = .2)) +
-    # add some lines
-    geom_vline(xintercept = thresholdLOG2FC, linetype = "dashed", color = "grey") +
-    geom_vline(xintercept = 0-thresholdLOG2FC, linetype = "dashed", color = "grey") +
-    geom_vline(xintercept = 0, color = "black") +
-    labs(x = "Log2FC", y = "-Log(p.adj)", fill="Differential Expression", size="Origin", shape="Gene Biotype") +
-    guides(fill = guide_legend(override.aes = list(size = 6, shape=21)), shape = guide_legend(override.aes = list(size = 6))) +
-    scale_fill_manual(values = c("UNDER"="#56B4E9", "UPPER"="#D55E00")) +
-    scale_shape_manual(values = c("lncRNA" = 21 ,"protein_coding" = 23,"other" = 22)) +
-    theme(legend.text = element_text(size = 16),
-          legend.title = element_text(face = "bold", size = 18))
-    
-    # Extract legend to keep the ggplot type of legend
-    VolcanoLegend <- get_legend(VolcanoPlot) 
-    
-    # Declare limits of the plot & delete legend 
-    VolcanoPlot <- VolcanoPlot + scale_x_continuous(limits = c(-max(abs(volcano_data$log2FoldChange)), max(abs(volcano_data$log2FoldChange)))) +
-      theme(legend.position="none")
-    
-    # Transform into plotly object
-    VolcanoPlot <- ggplotly(VolcanoPlot,
-                            tooltip = "text")
-    
-    # Print plot
-    output$plotVolcano <- renderUI({
-      renderPlotly({VolcanoPlot})
-    })
-    # Print legend
-    output$legendVolcano <- renderPlot({
-      as_ggplot(VolcanoLegend)
-    })
-    
-    shinyjs::show("plotVolcano")
-    shinyjs::show("legendVolcano")
-    
-  })
+
   
   
   ###################################
@@ -428,20 +446,26 @@ server <- function(input, output, session) {
     
     res_plot <- rbind(respos_plot, resneg_plot)
     res_plot[,"pval"]<- res_plot[,pv]
-    res_plot <- res_plot[order(res_plot[,"pval"], decreasing = TRUE),]
-    res_plot$pathway <- gsub(" [(]GO:[0-9]+[)]", "", res_plot$pathway)
+    # Make a column with shorter pathway names for pathway too long, to avoid excessive axis text size
+    res_plot <- res_plot %>%
+      mutate(pathway_shortname = ifelse(nchar(pathway) > 35, paste0(str_sub(pathway, end = 35), "..."), pathway))
     res_plot$pathway <- factor(res_plot$pathway, levels=res_plot$pathway)
-    p <- ggplot(res_plot, aes(x=pathway, y=-log10(pval), fill =NES))+
+    res_plot <- res_plot[order(res_plot[,"pval"], decreasing = TRUE),]
+    
+    p <- ggplot(res_plot, aes(x=reorder(pathway_shortname, -pval), y=-log10(pval), fill =NES))+
       geom_bar(stat='identity') + 
       scale_fill_gradient2(midpoint = 0, low = "blue", mid = "white", high = "red", limits=c(min(res_plot$NES), max(res_plot$NES))) +
+      labs(x = "Pathway") +
       coord_flip() +
-      theme(axis.text.y = element_text(size = 12))
+      theme(axis.text = element_text(size = 12),
+            axis.title = element_text(size = 12))
     
     
     # GSEA plot
     pathway_selection <- as.character(res_plot[order(res_plot$pval, decreasing = FALSE),"pathway"])
     p2 <- plotGseaTable(pathways[pathway_selection], genes, fgseaRes, gseaParam=0.5,
-                        axisLabelStyle = list(size=12))
+                        #axisLabelStyle = list(size=12),
+                        pathwayLabelStyle = list(size=12))
     
     # render GSEA Barplot
     output$barplotGSEA <- renderPlot({
