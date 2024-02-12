@@ -37,8 +37,9 @@ Once the file is loaded, you can filter your data :
 - Gprofiler button generate an interactive graph with gprofiler2 (tool for multi-databases enrichment analysis) 
 
 A Toy example is available to try the application : **ToyExample.csv**
-The data of for this example were extracted from [this analysis](https://www.ebi.ac.uk/gxa/experiments/E-GEOD-50760/Supplementary%20Information). It is a RNA-seq  analysis of 54 samples (normal colon, primary tumor, and liver metastases) from 18 colorectal cancer patients done by *Kim SK, Kim SY, Kim JH, Roh SA, Cho DH et al. (2014)* [A nineteen gene-based risk score classifier predicts prognosis of colorectal cancer patients](https://europepmc.org/abstract/MED/25049118). Out of this dataset, only colon and colon epithelium samples were kept, and their expression profile were compared using DESeq2 to produce the **ToyExample** csv dataset.  
-Please note that this dataset is not intended to be representative of a coherent analysis, but rather to be used to test the R shiny application.
+The data are from the [**airway** dataset](https://bioconductor.org/packages/release/data/experiment/html/airway.html) package developped by **Michael Love**.  
+This data are from a RNA-Seq experiment on four human airway smooth muscle cell lines treated with dexamethasone. Details on the gene model and read counting procedure are provided in the package vignette.  
+The experiment was done by **Himes BE, Jiang X, Wagner P, Hu R, Wang Q, Klanderman B, Whitaker RM, Duan Q, Lasky-Su J, Nikolos C, Jester W, Johnson M, Panettieri R Jr, Tantisira KG, Weiss ST, Lu Q**: '*RNA-Seq Transcriptome Profiling Identifies CRISPLD2 as a Glucocorticoid Responsive Gene that Modulates Cytokine Function in Airway Smooth Muscle Cells.*' PLoS One. 2014 Jun 13;9(6):e99625. PMID: 24926665. GEO: GSE52778.
 
 
 ## Support
