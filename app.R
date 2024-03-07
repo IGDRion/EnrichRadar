@@ -62,7 +62,7 @@ ui <- fluidPage(
       DTOutput("table"),
       hr(),
       fluidRow(
-        column(12, actionButtonStyled("launchVolcano", "VolcanoPlot!", type="default"), align = "center"),
+        column(12, actionButtonStyled("launchVolcano", "Volcano Plot", type="default"), align = "center"),
       ),
       fluidRow(
         column(9, uiOutput("plotVolcano")),
@@ -70,7 +70,7 @@ ui <- fluidPage(
       ),
       hr(),
       fluidRow(
-        column(6, actionButtonStyled("launchGprofiler", "Gprofiler!", type="default"), align = "right", class = "pad-top"),
+        column(6, actionButtonStyled("launchGprofiler", "Gprofiler", type="default"), align = "right", class = "pad-top"),
         column(6,selectInput("chooseOrganism", "Please choose your specie",
                              choices = c("Human","Dog"),
                              selected = "Human",
@@ -87,7 +87,7 @@ ui <- fluidPage(
       ),
       hr(),
       fluidRow(
-        column(6,actionButtonStyled("launchFGSEA", "GSEA!", type="default"), align = "right", class = "pad-top"),
+        column(6,actionButtonStyled("launchFGSEA", "GSEA", type="default"), align = "right", class = "pad-top"),
         column(6,selectInput("chooseGSEADB", "Please choose a database",
                              choices = c("GO:MF","GO:CC","GO:BP","KEGG","REACTOME","WikiPathways","TRANSFAC & JASPAR PWMs","miRTarBase","CORUM","Human Phenotype Ontology"),
                              width = "200px"), align = "left"),
@@ -192,7 +192,7 @@ server <- function(input, output, session) {
   ###################################
   observeEvent(input$launchVolcano, {
     
-    volcano_data <- select(data(), log2FoldChange,padj,gene_annot,gene_biotype,geneID,gene_name)
+    volcano_data <- select(data(), geneID,log2FoldChange,padj,gene_biotype,geneID,gene_name)
     volcano_data$padj <- ifelse((volcano_data$padj == 0 | -log(volcano_data$padj) > 30), exp(-30), volcano_data$padj)
     volcano_data$gene_biotype <- ifelse(is.na(volcano_data$gene_biotype), "other", volcano_data$gene_biotype)
     
@@ -202,7 +202,9 @@ server <- function(input, output, session) {
                                 ifelse((volcano_data$log2FoldChange <= 0-thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ), "UNDER", "NONE"))
     
     volcano_data <- filter(volcano_data, diff != "NONE")
-    volcano_data <- volcano_data[complete.cases(volcano_data$padj,volcano_data$log2FoldChange,volcano_data$gene_annot,volcano_data$gene_biotype),]
+    volcano_data <- volcano_data[complete.cases(volcano_data$padj,volcano_data$log2FoldChange,volcano_data$gene_biotype),]
+    
+    volcano_data$gene_annot <- ifelse(startsWith(volcano_data$geneID,"ENS"),"KNOWN", "NOVEL") 
     
     VolcanoPlot <- ggplot(volcano_data, aes(x = log2FoldChange, y = -log(padj), shape = gene_biotype, fill = factor(diff), size = gene_annot, 
                                             text = paste0("GeneID: ",geneID, "<br>Gene name: ",gene_name, "<br>Log2FoldChange: ",log2FoldChange, "<br>p-adjusted: ",padj))) +
