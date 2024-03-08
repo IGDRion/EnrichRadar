@@ -30,15 +30,25 @@ css <- HTML("
   .row .pad-top {
      padding-top:25px;
   }
+  .dataTables_wrapper .dataTables_length {
+     float: left;
+  }
+  .dataTables_wrapper .dataTables_filter {
+     float: left;
+     padding-left: 50px;
+     padding-bottom: 5px;
+     margin-top: -2px;
+  }
 ")
 
 # Define UI
 ui <- fluidPage(
-  tags$head(tags$style(css)), # Set up css
+  tags$style(css), # Set up css
   
   useShinyjs(),  # Set up shinyjs
   
   titlePanel("DESeq2 Viewer"),
+
   
   sidebarLayout(
     sidebarPanel(
@@ -52,7 +62,7 @@ ui <- fluidPage(
                      )),
       checkboxInput("KeepCodingGenes", "Show only protein coding genes", value = FALSE),
       checkboxInput("KeepKnownGenes", "Show only known genes", value = FALSE),
-      downloadButton("downloadCSV", "Save current selection"),
+      downloadButton("downloadMainTable", "Save current selection"),
       hr(),
       
       width = 2
@@ -71,7 +81,7 @@ ui <- fluidPage(
       hr(),
       fluidRow(
         column(6, actionButtonStyled("launchGprofiler", "Gprofiler", type="default"), align = "right", class = "pad-top"),
-        column(6,selectInput("chooseOrganism", "Please choose your specie",
+        column(6,selectInput("chooseOrganism", "Please choose a specie",
                              choices = c("Human","Dog"),
                              selected = "Human",
                              width = "200px"), align = "left"),
@@ -83,7 +93,8 @@ ui <- fluidPage(
                                 choices = c("20","30","40","ALL"),
                                 selected = "ALL",
                                 width = "200px")))),
-        tabPanel("Table", DTOutput("gprofilerTable"))
+        tabPanel("Table", DTOutput("gprofilerTable"),
+                 downloadButton("downloadGprofilerTable", "Save Gprofiler table"))
       ),
       hr(),
       fluidRow(
@@ -97,7 +108,8 @@ ui <- fluidPage(
           column(6, plotOutput("barplotGSEA")),
           column(6, plotOutput("lineplotGSEA"))
         )),
-        tabPanel("Table", DTOutput("fgseaTable"))
+        tabPanel("Table", DTOutput("fgseaTable"),
+                 downloadButton("downloadGSEATable", "Save GSEA table"))
       ),
       
       hr()
@@ -176,12 +188,12 @@ server <- function(input, output, session) {
   })
   
   # Download handler
-  output$downloadCSV <- downloadHandler(
+  output$downloadMainTable <- downloadHandler(
     filename = function() {
-      paste("deseq2_output_LOG2FC_", input$thresholdSliderLOG2FC, "_PADJ_", input$thresholdSliderPADJ, ".csv", sep = "")
+      paste("DESeq2Viewer_LOG2FC_", input$thresholdSliderLOG2FC, "_PADJ_", input$thresholdSliderPADJ, ".csv", sep = "")
     },
     content = function(file) {
-      write.csv(filtered_data(), file, row.names = FALSE)
+      write.csv(filtered_data(), file, row.names = FALSE, quote = FALSE)
     }
   )
   
@@ -268,7 +280,7 @@ server <- function(input, output, session) {
     output$gprofilerTable <<- NULL
     output$plotPathways <<- NULL
     
-    # Plot
+    # Error message if bug
     if (is.null(gostres) == TRUE) {
       shinyjs::show("TabsetGprofiler")
       updateActionButtonStyled(session, "launchGprofiler", type="warning")
@@ -277,7 +289,8 @@ server <- function(input, output, session) {
           as.character(div(style="color: orange", "No result to show, try with more genes / another set of genes"))
         )
       })   
-          
+    
+    # Or make & print plot + table if there is no problem      
     } else {
         updateActionButtonStyled(session, "launchGprofiler", type="default")
         # Generate Gprofiler plot
@@ -315,6 +328,15 @@ server <- function(input, output, session) {
                                            c("#E361486D", "#46AB4B6D", "#FFAE486D", "#DD44776D", "#3366CC6D", "#5674A66D", "#23AB996D", "#6633CC6D", "#66AB016D", "#9A00996D", "#0099C66D")))
         })
         
+        # Download button
+        output$downloadGprofilerTable <- downloadHandler(
+          filename = function() {
+            paste("Gprofiler_LOG2FC_", input$thresholdSliderLOG2FC, "_PADJ_", input$thresholdSliderPADJ, ".csv", sep = "")
+          },
+          content = function(file) {
+            write.csv(pathways_genes, file, row.names = FALSE, quote = FALSE)
+          }
+        )
         
         # Barplot with all the terms/pathways
         make_gprofiler_point <- function (pathways_genes_table) {
@@ -483,6 +505,17 @@ server <- function(input, output, session) {
     output$fgseaTable <- renderDT({
       datatable(res, options = list(ordering = TRUE, order = list(1, 'asc'), pageLength = 5), rownames = FALSE)
     })
+    
+    # Download button
+    output$downloadGSEATable <- downloadHandler(
+      database_clean_name <- sub("\\.txt$", "", file),
+      filename = function() {
+        paste("GSEA_", database_clean_name, ".csv", sep = "")
+      },
+      content = function(file) {
+        write.csv(res, file, row.names = FALSE, quote = FALSE)
+      }
+    )
     
     # Make Gprofiler tabset appear
     shinyjs::show("TabsetGSEA")
