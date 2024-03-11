@@ -10,6 +10,7 @@ if (!require(shinyjs)) install.packages("shinyjs")
 if (!require(ggpubr)) install.packages("ggpubr")
 if (!require(fgsea)) install.packages("fgsea")
 if (!require(stringr)) install.packages("stringr")
+if (!require(shinyWidgets)) install.packages("shinyWidgets")
 
 library(shiny)
 library(DT)
@@ -22,6 +23,7 @@ library(shinyjs)
 library(ggpubr)
 library(fgsea)
 library(stringr)
+library(shinyWidgets)
 
 # Set the size limit of uploaded files
 options(shiny.maxRequestSize = 50*1024^2)
@@ -54,7 +56,7 @@ ui <- fluidPage(
     sidebarPanel(
       fileInput("csv", "Choose DESeq2 Output File", accept = c(".csv")),
       sliderInput("thresholdSliderLOG2FC", "Log2FoldChange Threshold: ", min = 0, max = 5, value = 0, step = 0.5),
-      sliderInput("thresholdSliderPADJ", "padj Threshold: ", min = 0.01, max = 1, value = 1, step = 0.01),
+      sliderTextInput("thresholdSliderPADJ", "padj Threshold: ", choices = c(0.01, 0.05, "NONE"), selected = "NONE", grid = TRUE),
       radioButtons("DEside", "DE type:",
                    c("Both" = "both",
                      "Down" = "down",
@@ -169,7 +171,7 @@ server <- function(input, output, session) {
     filtered_data <- filtered_data[rowSums(is.na(filtered_data)) != ncol(filtered_data), ]
     
     # Get the full dataframe even with non-expressed genes (with NA in Log2FoldChange and padj) when thresholds are by default
-    if (thresholdLOG2FC == 0 & thresholdPADJ == 1) {
+    if (thresholdLOG2FC == 0 & thresholdPADJ == "NONE") {
       filtered_data <- data()
     }
     if (input$KeepCodingGenes == TRUE) {
