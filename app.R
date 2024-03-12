@@ -59,8 +59,8 @@ ui <- fluidPage(
       sliderTextInput("thresholdSliderPADJ", "padj Threshold: ", choices = c(0.01, 0.05, "NONE"), selected = "NONE", grid = TRUE),
       radioButtons("DEside", "DE type:",
                    c("Both" = "both",
-                     "Down" = "down",
-                     "Up" = "up"
+                     "Down Regulated" = "down",
+                     "Up Regulated" = "up"
                      )),
       checkboxInput("KeepCodingGenes", "Show only protein coding genes", value = FALSE),
       checkboxInput("KeepKnownGenes", "Show only known genes", value = FALSE),
