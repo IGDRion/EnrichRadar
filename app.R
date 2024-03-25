@@ -71,6 +71,7 @@ ui <- fluidPage(
     ),
     
     mainPanel(
+      h3(textOutput("DFtitle")),
       DTOutput("table"),
       hr(),
       fluidRow(
@@ -83,7 +84,7 @@ ui <- fluidPage(
       hr(),
       fluidRow(
         column(6, actionButtonStyled("launchGprofiler", "Gprofiler", type="default"), align = "right", class = "pad-top"),
-        column(6,selectInput("chooseOrganism", "Please choose a specie",
+        column(6, selectInput("chooseOrganism", "Please choose a specie",
                              choices = c("Human","Dog"),
                              selected = "Human",
                              width = "200px"), align = "left"),
@@ -106,10 +107,8 @@ ui <- fluidPage(
                              width = "200px"), align = "left"),
       ),
       tabsetPanel(id="TabsetGSEA",
-        tabPanel("Plots", fluidRow(
-          column(6, plotOutput("barplotGSEA")),
-          column(6, plotOutput("lineplotGSEA"))
-        )),
+        tabPanel("Plots", plotOutput("barplotGSEA")
+        ),
         tabPanel("Table", DTOutput("fgseaTable"),
                  downloadButton("downloadGSEATable", "Save GSEA table"))
       ),
@@ -184,9 +183,14 @@ server <- function(input, output, session) {
     return(filtered_data)
   })
   
+  # Title to the table (file name)
+  output$DFtitle <- renderText({
+    input$csv$name
+  })
+  
   # Render the filtered table
   output$table <- renderDT({
-    datatable(filtered_data(), options = list(ordering = TRUE, pageLength = 10), rownames = FALSE)
+    datatable(filtered_data(), filter = "top", options = list(ordering = TRUE, pageLength = 10), rownames = FALSE)
   })
   
   # Download handler
@@ -449,7 +453,7 @@ server <- function(input, output, session) {
   
     # Launching GSEA analysis
     fgseaRes = data.frame(fgsea(pathways, genes, minSize=minSize, maxSize=maxSize))
-    
+    print(fgseaRes)
     # Recovery of results
     cutpval = 0.05
     fdr = FALSE
@@ -458,7 +462,7 @@ server <- function(input, output, session) {
     res = fgseaRes[which(fgseaRes[,pv] < cutpval),c("pathway", "padj","pval", "ES", "leadingEdge", "NES")]
     res$genes = unlist(lapply(res$leadingEdge, function(x) paste(x, collapse = ", ")))
     res = res[,c("pathway", pv, "ES","NES", "genes")]
-    
+    #print(head(res))
     respos = res[res[,"ES"]>0,]
     respos = respos[order(respos[,pv], decreasing = FALSE),]
     
@@ -472,13 +476,15 @@ server <- function(input, output, session) {
     
     res_plot <- rbind(respos_plot, resneg_plot)
     res_plot[,"pval"]<- res_plot[,pv]
+    
     # Make a column with shorter pathway names for pathway too long, to avoid excessive axis text size
     res_plot <- res_plot %>%
       mutate(pathway_shortname = ifelse(nchar(pathway) > 35, paste0(str_sub(pathway, end = 35), "..."), pathway))
+    
     res_plot$pathway <- factor(res_plot$pathway, levels=res_plot$pathway)
     res_plot <- res_plot[order(res_plot[,"pval"], decreasing = TRUE),]
     
-    p <- ggplot(res_plot, aes(x=reorder(pathway_shortname, -pval), y=-log10(pval), fill =NES))+
+    barplot <- ggplot(res_plot, aes(x=reorder(pathway_shortname, -pval), y=-log10(pval), fill =NES))+
       geom_bar(stat='identity') + 
       scale_fill_gradient2(midpoint = 0, low = "blue", mid = "white", high = "red", limits=c(min(res_plot$NES), max(res_plot$NES))) +
       labs(x = "Pathway") +
@@ -487,21 +493,25 @@ server <- function(input, output, session) {
             axis.title = element_text(size = 12))
     
     
-    # GSEA plot
-    pathway_selection <- as.character(res_plot[order(res_plot$pval, decreasing = FALSE),"pathway"])
-    p2 <- plotGseaTable(pathways[pathway_selection], genes, fgseaRes, gseaParam=0.5,
+    # Pathway network
+    
+    
+    
+    
+    #pathway_selection <- as.character(res_plot[order(res_plot$pval, decreasing = FALSE),"pathway"])
+    #p2 <- plotGseaTable(pathways[pathway_selection], genes, fgseaRes, gseaParam=0.5,
                         #axisLabelStyle = list(size=12),
-                        pathwayLabelStyle = list(size=12))
+                        #pathwayLabelStyle = list(size=12))
     
     # render GSEA Barplot
     output$barplotGSEA <- renderPlot({
-      p
+      barplot
     })
     
-    # render GSEA plot
-    output$lineplotGSEA <- renderPlot({
-      p2
-    })
+    # render Pathway network
+    #output$lineplotGSEA <- renderPlot({
+      #p2
+    #})
     
     # render the GSEA table
     output$fgseaTable <- renderDT({
@@ -525,5 +535,6 @@ server <- function(input, output, session) {
   })
 
 }
+
 # Run the application
 shinyApp(ui, server)
