@@ -11,6 +11,7 @@ if (!require(ggpubr)) install.packages("ggpubr")
 if (!require(fgsea)) install.packages("fgsea")
 if (!require(stringr)) install.packages("stringr")
 if (!require(shinyWidgets)) install.packages("shinyWidgets")
+if (!require(visNetwork)) install.packages("visNetwork")
 
 library(shiny)
 library(DT)
@@ -24,6 +25,7 @@ library(ggpubr)
 library(fgsea)
 library(stringr)
 library(shinyWidgets)
+library(visNetwork)
 
 # Set the size limit of uploaded files
 options(shiny.maxRequestSize = 50*1024^2)
@@ -107,12 +109,13 @@ ui <- fluidPage(
                              width = "200px"), align = "left"),
       ),
       tabsetPanel(id="TabsetGSEA",
-        tabPanel("Plots", plotOutput("barplotGSEA")
-        ),
+        tabPanel("Plots", fluidRow(
+          column(6, plotOutput("barplotGSEA")),
+          column(6,  visNetworkOutput("pathway_network"))
+        )),
         tabPanel("Table", DTOutput("fgseaTable"),
                  downloadButton("downloadGSEATable", "Save GSEA table"))
       ),
-      
       hr()
     )
   )
@@ -453,7 +456,7 @@ server <- function(input, output, session) {
   
     # Launching GSEA analysis
     fgseaRes = data.frame(fgsea(pathways, genes, minSize=minSize, maxSize=maxSize))
-    print(fgseaRes)
+
     # Recovery of results
     cutpval = 0.05
     fdr = FALSE
@@ -493,15 +496,50 @@ server <- function(input, output, session) {
             axis.title = element_text(size = 12))
     
     
-    # Pathway network
+    # Pathway Network
+    fgseaRes <- fgseaRes %>%
+      filter(pval<0.05) # Keep only pathway significative (####change this later for res####)
+    
+    edges <- data.frame(from = character(), to = character())
+    nodes <- data.frame(id = character(), group = character())
+    
+    for (line in 1:nrow(fgseaRes)){
+      pathway <- fgseaRes[line,"pathway"]
+      leadingEdge <- as.vector(fgseaRes[line,"leadingEdge"][[1]])
+      for (gene in leadingEdge) {
+        
+        # add new edges
+        new_row <- data.frame(from = gene, to = fgseaRes[line,"pathway"])
+        edges <- rbind(edges, new_row)
+      }
+    }
     
     
+    for (edge in unique(edges$from)){
+      new_row <- data.frame(id = edge, group ="gene")
+      nodes <- rbind(nodes, new_row)
+    }
+    
+    for (edge in unique(edges$to)){
+      new_row <- data.frame(id = edge, group ="pathway")
+      nodes <- rbind(nodes, new_row)
+    }
+    
+    nodes$title <- nodes$id
     
     
-    #pathway_selection <- as.character(res_plot[order(res_plot$pval, decreasing = FALSE),"pathway"])
-    #p2 <- plotGseaTable(pathways[pathway_selection], genes, fgseaRes, gseaParam=0.5,
-                        #axisLabelStyle = list(size=12),
-                        #pathwayLabelStyle = list(size=12))
+    pathway_network <- visNetwork(nodes, edges) %>%
+      visGroups(groupname = "pathway", color = list(background = "yellow", border = "orange", hover = list(background = "orange", border = "red"), highlight = list(background = "orange", border = "red")), size = 50) %>%
+      visLegend(addNodes = list(
+        list(label = "Gene", shape = "circle", color = list(background = "lightskyblue", border = "royalblue")),
+        list(label = "Pathway", shape = "circle", color = list(background = "yellow", border = "orange"))),
+        useGroups = FALSE) %>%
+      visOptions(highlightNearest = TRUE,
+                 nodesIdSelection = TRUE
+      ) %>%
+      visInteraction(zoomView = TRUE, hover = TRUE, hoverConnectedEdges = TRUE, tooltipDelay = 0) %>%
+      visPhysics(stabilization = FALSE)
+    
     
     # render GSEA Barplot
     output$barplotGSEA <- renderPlot({
@@ -509,9 +547,9 @@ server <- function(input, output, session) {
     })
     
     # render Pathway network
-    #output$lineplotGSEA <- renderPlot({
-      #p2
-    #})
+    output$pathway_network <- renderVisNetwork({
+      pathway_network
+    })
     
     # render the GSEA table
     output$fgseaTable <- renderDT({
