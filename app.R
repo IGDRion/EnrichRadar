@@ -109,10 +109,8 @@ ui <- fluidPage(
                              width = "200px"), align = "left"),
       ),
       tabsetPanel(id="TabsetGSEA",
-        tabPanel("Plots", fluidRow(
-          column(6, plotOutput("barplotGSEA")),
-          column(6,  visNetworkOutput("pathway_network"))
-        )),
+        tabPanel("Plot", plotOutput("barplotGSEA")),
+        tabPanel("Network", visNetworkOutput("pathway_network")),
         tabPanel("Table", DTOutput("fgseaTable"),
                  downloadButton("downloadGSEATable", "Save GSEA table"))
       ),
@@ -193,7 +191,7 @@ server <- function(input, output, session) {
   
   # Render the filtered table
   output$table <- renderDT({
-    datatable(filtered_data(), filter = "top", options = list(ordering = TRUE, pageLength = 10), rownames = FALSE)
+    datatable(filtered_data(), options = list(ordering = TRUE, pageLength = 10), rownames = FALSE)
   })
   
   # Download handler
@@ -212,60 +210,61 @@ server <- function(input, output, session) {
   # Volcano plot
   ###################################
   observeEvent(input$launchVolcano, {
-    
-    volcano_data <- select(data(), geneID,log2FoldChange,padj,gene_biotype,geneID,gene_name)
-    volcano_data$padj <- ifelse((volcano_data$padj == 0 | -log(volcano_data$padj) > 30), exp(-30), volcano_data$padj)
-    volcano_data$gene_biotype <- ifelse(is.na(volcano_data$gene_biotype), "other", volcano_data$gene_biotype)
-    
-    thresholdLOG2FC <- input$thresholdSliderLOG2FC
-    thresholdPADJ <- input$thresholdSliderPADJ
-    volcano_data$diff <- ifelse((volcano_data$log2FoldChange >= thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ),"UPPER", 
-                                ifelse((volcano_data$log2FoldChange <= 0-thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ), "UNDER", "NONE"))
-    
-    volcano_data <- filter(volcano_data, diff != "NONE")
-    volcano_data <- volcano_data[complete.cases(volcano_data$padj,volcano_data$log2FoldChange,volcano_data$gene_biotype),]
-    
-    volcano_data$gene_annot <- ifelse(startsWith(volcano_data$geneID,"ENS"),"KNOWN", "NOVEL") 
-    
-    VolcanoPlot <- ggplot(volcano_data, aes(x = log2FoldChange, y = -log(padj), shape = gene_biotype, fill = factor(diff), size = gene_annot, 
-                                            text = paste0("GeneID: ",geneID, "<br>Gene name: ",gene_name, "<br>Log2FoldChange: ",log2FoldChange, "<br>p-adjusted: ",padj))) +
-      geom_point(aes(stroke = .2)) +
-      # add some lines
-      geom_vline(xintercept = thresholdLOG2FC, linetype = "dashed", color = "grey") +
-      geom_vline(xintercept = 0-thresholdLOG2FC, linetype = "dashed", color = "grey") +
-      geom_vline(xintercept = 0, color = "black") +
-      labs(x = "Log2FC", y = "-Log(p.adj)", fill="Differential Expression", size="Origin", shape="Gene Biotype") +
-      guides(fill = guide_legend(override.aes = list(size = 6, shape=21)), shape = guide_legend(override.aes = list(size = 6))) +
-      scale_fill_manual(values = c("UNDER"="#56B4E9", "UPPER"="#D55E00")) +
-      scale_shape_manual(values = c("lncRNA" = 21 ,"protein_coding" = 23,"other" = 22)) +
-      theme(legend.text = element_text(size = 16),
-            legend.title = element_text(face = "bold", size = 18))
-    
-    # Extract legend to keep the ggplot type of legend
-    VolcanoLegend <- get_legend(VolcanoPlot) 
-    
-    # Declare limits of the plot & delete legend 
-    VolcanoPlot <- VolcanoPlot + scale_x_continuous(limits = c(-max(abs(volcano_data$log2FoldChange)), max(abs(volcano_data$log2FoldChange)))) +
-      theme(legend.position="none")
-    
-    # Transform into plotly object
-    VolcanoPlot <- ggplotly(VolcanoPlot,
-                            tooltip = "text")
-    
-    # Print plot
-    output$plotVolcano <- renderUI({
-      renderPlotly({VolcanoPlot})
+    # Observe() so the plot changes when the table is updated
+    observe({
+      volcano_data <- select(data(), geneID,log2FoldChange,padj,gene_biotype,geneID,gene_name)
+      volcano_data$padj <- ifelse((volcano_data$padj == 0 | -log(volcano_data$padj) > 30), exp(-30), volcano_data$padj)
+      volcano_data$gene_biotype <- ifelse(is.na(volcano_data$gene_biotype), "other", volcano_data$gene_biotype)
+      
+      thresholdLOG2FC <- input$thresholdSliderLOG2FC
+      thresholdPADJ <- input$thresholdSliderPADJ
+      volcano_data$diff <- ifelse((volcano_data$log2FoldChange >= thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ),"UPPER", 
+                                  ifelse((volcano_data$log2FoldChange <= 0-thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ), "UNDER", "NONE"))
+      
+      volcano_data <- filter(volcano_data, diff != "NONE")
+      volcano_data <- volcano_data[complete.cases(volcano_data$padj,volcano_data$log2FoldChange,volcano_data$gene_biotype),]
+      
+      volcano_data$gene_annot <- ifelse(startsWith(volcano_data$geneID,"ENS"),"KNOWN", "NOVEL") 
+      
+      VolcanoPlot <- ggplot(volcano_data, aes(x = log2FoldChange, y = -log(padj), shape = gene_biotype, fill = factor(diff), size = gene_annot, 
+                                              text = paste0("GeneID: ",geneID, "<br>Gene name: ",gene_name, "<br>Log2FoldChange: ",log2FoldChange, "<br>p-adjusted: ",padj))) +
+        geom_point(aes(stroke = .2)) +
+        # add some lines
+        geom_vline(xintercept = thresholdLOG2FC, linetype = "dashed", color = "grey") +
+        geom_vline(xintercept = 0-thresholdLOG2FC, linetype = "dashed", color = "grey") +
+        geom_vline(xintercept = 0, color = "black") +
+        labs(x = "Log2FC", y = "-Log(p.adj)", fill="Differential Expression", size="Origin", shape="Gene Biotype") +
+        guides(fill = guide_legend(override.aes = list(size = 6, shape=21)), shape = guide_legend(override.aes = list(size = 6))) +
+        scale_fill_manual(values = c("UNDER"="#56B4E9", "UPPER"="#D55E00")) +
+        scale_shape_manual(values = c("lncRNA" = 21 ,"protein_coding" = 23,"other" = 22)) +
+        theme(legend.text = element_text(size = 16),
+              legend.title = element_text(face = "bold", size = 18))
+      
+      # Extract legend to keep the ggplot type of legend
+      VolcanoLegend <- get_legend(VolcanoPlot) 
+      
+      # Declare limits of the plot & delete legend 
+      VolcanoPlot <- VolcanoPlot + scale_x_continuous(limits = c(-max(abs(volcano_data$log2FoldChange)), max(abs(volcano_data$log2FoldChange)))) +
+        theme(legend.position="none")
+      
+      # Transform into plotly object
+      VolcanoPlot <- ggplotly(VolcanoPlot,
+                              tooltip = "text")
+      
+      # Print plot
+      output$plotVolcano <- renderUI({
+        renderPlotly({VolcanoPlot})
+      })
+      # Print legend
+      output$legendVolcano <- renderPlot({
+        as_ggplot(VolcanoLegend)
+      })
+      
+      shinyjs::show("plotVolcano")
+      shinyjs::show("legendVolcano")
+      
     })
-    # Print legend
-    output$legendVolcano <- renderPlot({
-      as_ggplot(VolcanoLegend)
-    })
-    
-    shinyjs::show("plotVolcano")
-    shinyjs::show("legendVolcano")
-    
   })
-  
   
   
   ###################################
@@ -404,6 +403,12 @@ server <- function(input, output, session) {
   ###################################
   observeEvent(input$launchFGSEA, {
     
+    #print(cat(paste0("mem used 1: ", capture.output(print(mem_used())),"\n")))
+    
+    # Delete what is in the network output to avoid lag on reinitialisation
+    output$pathway_network <- NULL
+    
+    
     # Log2FC for each genes (vector of Log2FC with genes ID associated as names)
     genes <- select(data(), gene_name, log2FoldChange)
     genes <- na.omit(genes)
@@ -500,7 +505,7 @@ server <- function(input, output, session) {
     fgseaRes <- fgseaRes %>%
       filter(pval<0.05) # Keep only pathway significative (####change this later for res####)
     
-    edges <- data.frame(from = character(), to = character())
+    edges <- data.frame(from = character(), to = character(), NES = character())
     nodes <- data.frame(id = character(), group = character())
     
     for (line in 1:nrow(fgseaRes)){
@@ -509,12 +514,12 @@ server <- function(input, output, session) {
       for (gene in leadingEdge) {
         
         # add new edges
-        new_row <- data.frame(from = gene, to = fgseaRes[line,"pathway"])
+        new_row <- data.frame(from = gene, to = fgseaRes[line,"pathway"], NES = ifelse(fgseaRes[line,"NES"] > 0, "up", "down"))
         edges <- rbind(edges, new_row)
       }
     }
     
-    
+    # add nodes + groups of nodes
     for (edge in unique(edges$from)){
       new_row <- data.frame(id = edge, group ="gene")
       nodes <- rbind(nodes, new_row)
@@ -525,20 +530,38 @@ server <- function(input, output, session) {
       nodes <- rbind(nodes, new_row)
     }
     
+    nodes <- left_join(x = nodes, y = edges, join_by(id == to)) %>%
+      select(-from) %>%
+      unique()
+    
+    nodes$group <- ifelse(nodes$group == "pathway", 
+                          paste(nodes$group, nodes$NES, sep = "_"),
+                          nodes$group)
+    
+    nodes$NES = NULL
+    
+    
+    # add titles to nodes for caption
     nodes$title <- nodes$id
     
-    
+  
+    # Network
     pathway_network <- visNetwork(nodes, edges) %>%
-      visGroups(groupname = "pathway", color = list(background = "yellow", border = "orange", hover = list(background = "orange", border = "red"), highlight = list(background = "orange", border = "red")), size = 50) %>%
+      visGroups(groupname = "gene", color = list(background = "palegreen", border = "seagreen", hover = list(background = "seagreen", border = "forestgreen"), highlight = list(background = "seagreen", border = "black")), size = 20) %>%
+      visGroups(groupname = "pathway_up", color = list(background = "tomato", border = "firebrick", hover = list(background = "firebrick", border = "darkred"), highlight = list(background = "firebrick", border = "black")), size = 50) %>%
+      visGroups(groupname = "pathway_down", color = list(background = "royalblue", border = "blue", hover = list(background = "blue", border = "darkblue"), highlight = list(background = "blue", border = "black")), size = 50) %>%
       visLegend(addNodes = list(
-        list(label = "Gene", shape = "circle", color = list(background = "lightskyblue", border = "royalblue")),
-        list(label = "Pathway", shape = "circle", color = list(background = "yellow", border = "orange"))),
+        list(label = "Gene", shape = "circle", color = list(background = "palegreen", border = "seagreen")),
+        list(label = "Pathway upregulated", shape = "circle", color = list(background = "tomato", border = "firebrick")),
+        list(label = "Pathway downregulated", shape = "circle", color = list(background = "royalblue", border = "blue"))),
         useGroups = FALSE) %>%
       visOptions(highlightNearest = TRUE,
-                 nodesIdSelection = TRUE
-      ) %>%
-      visInteraction(zoomView = TRUE, hover = TRUE, hoverConnectedEdges = TRUE, tooltipDelay = 0) %>%
+                 selectedBy = list(variable = "group", values = c("pathway_up", "pathway_down")
+                 )) %>%
+      visInteraction(zoomView = TRUE, hover = TRUE, hoverConnectedEdges = TRUE, tooltipDelay = 0, navigationButtons = TRUE) %>%
+      #visIgraphLayout() %>%
       visPhysics(stabilization = FALSE)
+
     
     
     # render GSEA Barplot
