@@ -91,6 +91,9 @@ ui <- fluidPage(
                              selected = "Human",
                              width = "200px"), align = "left"),
       ),
+      fluidRow(
+        column(12, h5(textOutput("GPtext"), align = "center")),
+      ),
       tabsetPanel(id="TabsetGprofiler",
         tabPanel("Plot", fluidRow(
           column(10, uiOutput("plotPathways")),
@@ -107,6 +110,9 @@ ui <- fluidPage(
         column(6,selectInput("chooseGSEADB", "Please choose a database",
                              choices = c("GO:MF","GO:CC","GO:BP","KEGG","REACTOME","WikiPathways","TRANSFAC & JASPAR PWMs","miRTarBase","CORUM","Human Phenotype Ontology"),
                              width = "200px"), align = "left"),
+      ),
+      fluidRow(
+        column(12, h5(textOutput("GSEAtext"), align = "center")),
       ),
       tabsetPanel(id="TabsetGSEA",
         tabPanel("Plot", plotOutput("barplotGSEA")),
@@ -138,6 +144,9 @@ server <- function(input, output, session) {
   # Hide button to select how much term are displayed in gprofiler plot until condition is met (nbTerm > 50)
   shinyjs::hide("nbTerm")
   
+  # Hide hint text
+  shinyjs::hide("GSEAtext")
+  
   # Read CSV file
   data <- reactive({
     req(input$csv)
@@ -151,6 +160,7 @@ server <- function(input, output, session) {
       shinyjs::show("chooseOrganism")
       shinyjs::show("launchFGSEA")
       shinyjs::show("chooseGSEADB")
+      shinyjs::show("GSEAtext")
     }
   )
   
@@ -204,6 +214,10 @@ server <- function(input, output, session) {
     }
   )
   
+  # Hint text for GSEA
+  output$GSEAtext <- renderText({
+    "NB: GSEA analysis is run on the whole data, you can't/there is no need to filter the data first"
+  })
   
   
   ###################################
@@ -394,6 +408,14 @@ server <- function(input, output, session) {
     
     # Make Gprofiler tabset appear 
       shinyjs::show("TabsetGprofiler")
+      
+      
+    # Make Gprofiler tabset appear 
+      output$GPtext <- renderText({
+        "NB: You need to press the button again to update the plot/table with your current data selection."
+      })
+      
+      shinyjs::show("GPtext")
   })
 
   
@@ -401,6 +423,7 @@ server <- function(input, output, session) {
   ###################################
   # GSEA analysis with fgsea package
   ###################################
+
   observeEvent(input$launchFGSEA, {
     
     #print(cat(paste0("mem used 1: ", capture.output(print(mem_used())),"\n")))
