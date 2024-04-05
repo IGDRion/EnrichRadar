@@ -45,7 +45,9 @@ css <- HTML("
   }
 ")
 
-# Define UI
+###################
+#       UI       #
+##################
 ui <- fluidPage(
   tags$style(css), # Set up css
   
@@ -74,6 +76,9 @@ ui <- fluidPage(
     
     mainPanel(
       # main Dataframe
+      fluidRow(
+        column(12, h3(textOutput("starterText"), align = "center")),
+      ),
       h3(textOutput("DFtitle")),
       DTOutput("table"),
       hr(),
@@ -142,8 +147,16 @@ ui <- fluidPage(
   )
 )
 
-# Define server logic
+
+###################
+#     SERVER     #
+##################
 server <- function(input, output, session) {
+  
+  # Main text for Gprofiler analysis
+  output$starterText <- renderText({
+    "Click on \"Browse\" button of the side panel and choose your DESeq2 output file to start"
+  })
   
   # Hide buttons until data is loaded
   shinyjs::hide("launchVolcano")
@@ -175,6 +188,8 @@ server <- function(input, output, session) {
   
   observe(
     if (!is.null(data())){
+      # Hide starter text
+      shinyjs::hide("starterText")
       # Show analysis buttons
       shinyjs::show("launchVolcano")
       shinyjs::show("launchGprofiler")
@@ -336,26 +351,37 @@ server <- function(input, output, session) {
     }
     
     # Prepare and launch Gprofiler
-    GprofilerGeneList <- filtered_data()[["geneID"]][1:nrow(filtered_data())]
+    gprofilerdata <- filtered_data() %>%
+      arrange(desc(abs(log2FoldChange)))
+    
+    GprofilerGeneList <- gprofilerdata[["geneID"]][1:nrow(gprofilerdata)] 
+    
+    # Run Gprofiler ONLY if the list of gene in query has less than 1000 genes, to avoid crash of the application
+    if (length(GprofilerGeneList) <= 1000) {
       
-    gostres <- gost(query = GprofilerGeneList, organism = specie, evcodes = TRUE)
-    
-    # Reset pathways table and plot in case gostres returns nothing, to not keep the display of the last gprofiler run
-    output$gprofilerTable <<- NULL
-    output$plotPathways <<- NULL
-    
-    # Error message if bug
-    if (is.null(gostres) == TRUE) {
-      shinyjs::show("TabsetGprofiler")
-      updateActionButtonStyled(session, "launchGprofiler", type="warning")
+      # Make the output of plot NULL so that it became blank and it shows that it is loading / doing something
       output$plotPathways <- renderUI({
-        HTML(
-          as.character(div(style="color: orange", "No result to show, try with more genes / another set of genes"))
-        )
-      })   
-    
-    # Or make & print plot + table if there is no problem      
-    } else {
+        NULL
+      })
+        
+      gostres <- gost(query = GprofilerGeneList, organism = specie, ordered_query = TRUE, evcodes = TRUE)
+      
+      # Reset pathways table and plot in case gostres returns nothing, to not keep the display of the last gprofiler run
+      output$gprofilerTable <<- NULL
+      output$plotPathways <<- NULL
+      
+      # Error message if bug
+      if (is.null(gostres) == TRUE) {
+        shinyjs::show("TabsetGprofiler")
+        updateActionButtonStyled(session, "launchGprofiler", type="warning")
+        output$plotPathways <- renderUI({
+          HTML(
+            as.character(div(style="color: orange", "No result to show, try with more genes / another set of genes"))
+          )
+        })   
+        
+        # Or make & print plot + table if there is no problem      
+      } else {
         updateActionButtonStyled(session, "launchGprofiler", type="default")
         # Generate Gprofiler plot
         gost_plot <- gostplot(gostres, capped = FALSE, interactive = TRUE)
@@ -446,18 +472,33 @@ server <- function(input, output, session) {
             })
           })
         }
-    }
-    
-    # Make Gprofiler tabset appear 
+      }
+      
+      # Make Gprofiler tabset appear 
       shinyjs::show("TabsetGprofiler")
       
       
-    # Make Gprofiler tabset appear 
+      # Make Gprofiler tabset appear 
       output$GPtext <- renderText({
         "NB: You need to press the button again to update the plot/table with your current data selection."
       })
       
       shinyjs::show("GPtext")
+      
+    }
+    
+    # If there are more than 1000 genes in the query, display a warning message
+    else {
+      shinyjs::hide("nbTerm")
+      shinyjs::show("TabsetGprofiler")
+      updateActionButtonStyled(session, "launchGprofiler", type="warning")
+      output$plotPathways <- renderUI({
+        HTML(
+          as.character(div(style="color: orange", "Query size too big. Max query size is 1000 genes. Please filter the genes before retrying."))
+        )
+      }) 
+    }
+    
   })
 
   
@@ -468,11 +509,10 @@ server <- function(input, output, session) {
 
   observeEvent(input$launchFGSEA, {
     
-    #print(cat(paste0("mem used 1: ", capture.output(print(mem_used())),"\n")))
-    
-    # Delete what is in the network output to avoid lag on reinitialisation
-    output$pathway_network <- NULL
-    
+    # Make the network blank to show that it is loading / doing something. Maybe also reduce lag
+    output$pathway_network <- renderVisNetwork({
+      NULL
+    })
     
     # Log2FC for each genes (vector of Log2FC with genes ID associated as names)
     genes <- select(data(), gene_name, log2FoldChange)
