@@ -73,9 +73,14 @@ ui <- fluidPage(
     ),
     
     mainPanel(
+      # main Dataframe
       h3(textOutput("DFtitle")),
       DTOutput("table"),
       hr(),
+      # Volcano plot
+      fluidRow(
+        column(12, h4(textOutput("VolcanoMainText"), align = "center")),
+      ),
       fluidRow(
         column(12, actionButtonStyled("launchVolcano", "Volcano Plot", type="default"), align = "center"),
       ),
@@ -84,9 +89,13 @@ ui <- fluidPage(
         column(3, plotOutput("legendVolcano"))
       ),
       hr(),
+      # Gprofiler
+      fluidRow(
+        column(12, h4(textOutput("GprofilerMainText"), align = "center")),
+      ),
       fluidRow(
         column(6, actionButtonStyled("launchGprofiler", "Gprofiler", type="default"), align = "right", class = "pad-top"),
-        column(6, selectInput("chooseOrganism", "Please choose a specie",
+        column(6, selectInput("chooseOrganism", "Choose a specie",
                              choices = c("Human","Dog"),
                              selected = "Human",
                              width = "200px"), align = "left"),
@@ -105,18 +114,26 @@ ui <- fluidPage(
                  downloadButton("downloadGprofilerTable", "Save Gprofiler table"))
       ),
       hr(),
+      # GSEA
+      fluidRow(
+        column(12, h4(textOutput("GSEAMainText"), align = "center")),
+      ),
       fluidRow(
         column(6,actionButtonStyled("launchFGSEA", "GSEA", type="default"), align = "right", class = "pad-top"),
-        column(6,selectInput("chooseGSEADB", "Please choose a database",
+        column(6,selectInput("chooseGSEADB", "Choose a database",
                              choices = c("GO:MF","GO:CC","GO:BP","KEGG","REACTOME","WikiPathways","TRANSFAC & JASPAR PWMs","miRTarBase","CORUM","Human Phenotype Ontology"),
                              width = "200px"), align = "left"),
       ),
       fluidRow(
         column(12, h5(textOutput("GSEAtext"), align = "center")),
       ),
+      
       tabsetPanel(id="TabsetGSEA",
         tabPanel("Plot", plotOutput("barplotGSEA")),
-        tabPanel("Network", visNetworkOutput("pathway_network")),
+        tabPanel("Network",
+                 p(),
+                 fluidRow(column(12, h5(textOutput("GSEAtext2"), align = "left"))),
+                 visNetworkOutput("pathway_network")),
         tabPanel("Table", DTOutput("fgseaTable"),
                  downloadButton("downloadGSEATable", "Save GSEA table"))
       ),
@@ -144,7 +161,10 @@ server <- function(input, output, session) {
   # Hide button to select how much term are displayed in gprofiler plot until condition is met (nbTerm > 50)
   shinyjs::hide("nbTerm")
   
-  # Hide hint text
+  # Hide main/hint text
+  shinyjs::hide("VolcanoMainText")
+  shinyjs::hide("GprofilerMainText")
+  shinyjs::hide("GSEAMainText")
   shinyjs::hide("GSEAtext")
   
   # Read CSV file
@@ -155,11 +175,16 @@ server <- function(input, output, session) {
   
   observe(
     if (!is.null(data())){
+      # Show analysis buttons
       shinyjs::show("launchVolcano")
       shinyjs::show("launchGprofiler")
       shinyjs::show("chooseOrganism")
       shinyjs::show("launchFGSEA")
       shinyjs::show("chooseGSEADB")
+      # Show main/hint text
+      shinyjs::show("VolcanoMainText")
+      shinyjs::show("GprofilerMainText")
+      shinyjs::show("GSEAMainText")
       shinyjs::show("GSEAtext")
     }
   )
@@ -213,6 +238,23 @@ server <- function(input, output, session) {
       write.csv(filtered_data(), file, row.names = FALSE, quote = FALSE)
     }
   )
+  
+  
+  
+  # Main text for Volcano plot
+  output$VolcanoMainText <- renderText({
+    "Differential expression representation"
+  })
+  
+  # Main text for Gprofiler analysis
+  output$GprofilerMainText <- renderText({
+    "Enrichment analysis with Gprofiler (analysis on several databases)"
+  })
+  
+  # Main text for GSEA analysis
+  output$GSEAMainText <- renderText({
+    "Enrichment analysis with GSEA"
+  })
   
   # Hint text for GSEA
   output$GSEAtext <- renderText({
@@ -613,8 +655,13 @@ server <- function(input, output, session) {
       }
     )
     
-    # Make Gprofiler tabset appear
+    # Make GSEA tabset appear
     shinyjs::show("TabsetGSEA")
+    
+    # Second hint text for GSEA
+    output$GSEAtext2 <- renderText({
+      "Tips: Zoom in or hover on nodes to see the names of the genes/pathways"
+    })
     
   })
 
