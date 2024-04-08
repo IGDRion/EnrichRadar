@@ -628,12 +628,14 @@ server <- function(input, output, session) {
       }
     }
     
+    # count number of edges for each genes
     edges_count <- edges %>%
       group_by(from) %>%
       mutate(edgesCount = n()) %>%
       select(-to, -NES)
     
     
+    # add nodes + groups of nodes + number of edges for genes
     for (edge in unique(edges$from)){
       new_row <- data.frame(id = edge, group ="gene")
       nodes <- rbind(nodes, new_row)
@@ -656,7 +658,6 @@ server <- function(input, output, session) {
                           paste(nodes$group, nodes$NES, sep = "_"),
                           nodes$group)
     
-    
     nodes$NES = NULL
     
     # add titles to nodes for caption
@@ -676,7 +677,7 @@ server <- function(input, output, session) {
       visOptions(highlightNearest = TRUE,
                  selectedBy = list(variable = "edgesCount", highlight = TRUE),
       ) %>%
-      visInteraction(zoomView = TRUE, hover = TRUE, hoverConnectedEdges = TRUE, tooltipDelay = 0) %>%
+      visInteraction(zoomView = TRUE, hover = TRUE, hoverConnectedEdges = TRUE, tooltipDelay = 0, navigationButtons = TRUE) %>%
       #visIgraphLayout() %>%
       visPhysics(stabilization = FALSE)
 
