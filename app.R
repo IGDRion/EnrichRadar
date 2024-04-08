@@ -27,6 +27,9 @@ library(stringr)
 library(shinyWidgets)
 library(visNetwork)
 
+# Set directory to have the right path of databases later
+setwd(getSrcDirectory(function(){})[1])
+
 # Set the size limit of uploaded files
 options(shiny.maxRequestSize = 50*1024^2)
 
@@ -49,6 +52,7 @@ css <- HTML("
 #       UI       #
 ##################
 ui <- fluidPage(
+  #theme = shinytheme("cerulean"), # Set up a theme
   tags$style(css), # Set up css
   
   useShinyjs(),  # Set up shinyjs
@@ -557,7 +561,7 @@ server <- function(input, output, session) {
       file <- "Human_Phenotype_Ontology.txt"
     }
     
-    pathways <- processDB(paste0("/Users/Victor/",file))
+    pathways <- processDB(paste0("./enrichR_databases/",file))
     
     
     # Define min and max number of genes associated with a pathway
@@ -624,7 +628,12 @@ server <- function(input, output, session) {
       }
     }
     
-    # add nodes + groups of nodes
+    edges_count <- edges %>%
+      group_by(from) %>%
+      mutate(edgesCount = n()) %>%
+      select(-to, -NES)
+    
+    
     for (edge in unique(edges$from)){
       new_row <- data.frame(id = edge, group ="gene")
       nodes <- rbind(nodes, new_row)
@@ -639,12 +648,16 @@ server <- function(input, output, session) {
       select(-from) %>%
       unique()
     
+    
+    nodes <- left_join(x = nodes, y = edges_count, join_by(id == from)) %>%
+      unique()
+    
     nodes$group <- ifelse(nodes$group == "pathway", 
                           paste(nodes$group, nodes$NES, sep = "_"),
                           nodes$group)
     
-    nodes$NES = NULL
     
+    nodes$NES = NULL
     
     # add titles to nodes for caption
     nodes$title <- nodes$id
@@ -652,18 +665,18 @@ server <- function(input, output, session) {
   
     # Network
     pathway_network <- visNetwork(nodes, edges) %>%
-      visGroups(groupname = "gene", color = list(background = "palegreen", border = "seagreen", hover = list(background = "seagreen", border = "forestgreen"), highlight = list(background = "seagreen", border = "black")), size = 20) %>%
-      visGroups(groupname = "pathway_up", color = list(background = "tomato", border = "firebrick", hover = list(background = "firebrick", border = "darkred"), highlight = list(background = "firebrick", border = "black")), size = 50) %>%
-      visGroups(groupname = "pathway_down", color = list(background = "royalblue", border = "blue", hover = list(background = "blue", border = "darkblue"), highlight = list(background = "blue", border = "black")), size = 50) %>%
+      visGroups(groupname = "gene", color = list(background = "palegreen", border = "seagreen", hover = list(background = "seagreen", border = "forestgreen"), highlight = list(background = "palegreen", border = "black")), size = 25) %>%
+      visGroups(groupname = "pathway_up", color = list(background = "tomato", border = "firebrick", hover = list(background = "firebrick", border = "darkred"), highlight = list(background = "tomato", border = "black")), size = 50) %>%
+      visGroups(groupname = "pathway_down", color = list(background = "lightblue", border = "royalblue", hover = list(background = "royalblue", border = "darkblue"), highlight = list(background = "lightblue", border = "black")), size = 50) %>%
       visLegend(addNodes = list(
         list(label = "Gene", shape = "circle", color = list(background = "palegreen", border = "seagreen")),
-        list(label = "Pathway upregulated", shape = "circle", color = list(background = "tomato", border = "firebrick")),
-        list(label = "Pathway downregulated", shape = "circle", color = list(background = "royalblue", border = "blue"))),
+        list(label = "Pathway \n upregulated", shape = "circle", color = list(background = "tomato", border = "firebrick")),
+        list(label = "Pathway \n downregulated", shape = "circle", color = list(background = "lightblue", border = "royalblue"))),
         useGroups = FALSE) %>%
       visOptions(highlightNearest = TRUE,
-                 selectedBy = list(variable = "group", values = c("pathway_up", "pathway_down")
-                 )) %>%
-      visInteraction(zoomView = TRUE, hover = TRUE, hoverConnectedEdges = TRUE, tooltipDelay = 0, navigationButtons = TRUE) %>%
+                 selectedBy = list(variable = "edgesCount", highlight = TRUE),
+      ) %>%
+      visInteraction(zoomView = TRUE, hover = TRUE, hoverConnectedEdges = TRUE, tooltipDelay = 0) %>%
       #visIgraphLayout() %>%
       visPhysics(stabilization = FALSE)
 
