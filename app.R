@@ -1,38 +1,45 @@
 # Install and load required packages if not already installed
-if (!require(shiny)) install.packages("shiny")
-if (!require(DT)) install.packages("DT")
-if (!require(ggplot2)) install.packages("ggplot2")
-if (!require(plotly)) install.packages("plotly")
-if (!require(gprofiler2)) install.packages("gprofiler2")
-if (!require(dipsaus)) install.packages("dipsaus")
-if (!require(dplyr)) install.packages("dplyr")
-if (!require(shinyjs)) install.packages("shinyjs")
-if (!require(ggpubr)) install.packages("ggpubr")
-if (!require(fgsea)) install.packages("fgsea")
-if (!require(stringr)) install.packages("stringr")
-if (!require(shinyWidgets)) install.packages("shinyWidgets")
-if (!require(visNetwork)) install.packages("visNetwork")
+if (!require("dipsaus")) install.packages("dipsaus")
+if (!require("DT")) install.packages("DT")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("fgsea")) install.packages("fgsea")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("ggpubr")) install.packages("ggpubr")
+if (!require("gprofiler2")) install.packages("gprofiler2")
+if (!require("plotly")) install.packages("plotly")
+if (!require("shiny")) install.packages("shiny")
+if (!require("shinyjs")) install.packages("shinyjs")
+if (!require("shinyWidgets")) install.packages("shinyWidgets")
+if (!require("stringr")) install.packages("stringr")
+if (!require("visNetwork")) install.packages("visNetwork")
 
-library(shiny)
-library(DT)
-library(ggplot2)
-library(plotly)
-library(gprofiler2)
+# Load required packages
 library(dipsaus)
+library(DT)
 library(dplyr)
-library(shinyjs)
-library(ggpubr)
 library(fgsea)
-library(stringr)
+library(ggplot2)
+library(ggpubr)
+library(gprofiler2)
+library(plotly)
+library(shiny)
+library(shinyjs)
 library(shinyWidgets)
+library(stringr)
 library(visNetwork)
 
-# Set directory to have the right path of databases later
+# Set directory to the src directory of the app so that the path of databases 
+# is correctly resolved later (otherwise they won't be found)
 setwd(getSrcDirectory(function(){})[1])
 
 # Set the size limit of uploaded files
 options(shiny.maxRequestSize = 50*1024^2)
 
+# This css block is for the following reasons:
+# - add top padding to rows to avoid overlapping of elements
+# - move the length select box to the left to be more consistent
+# - move the filter box to the left and add some bottom padding to be more consistent
+# - move the filter box up a bit to align it with the length select box
 css <- HTML("
   .row .pad-top {
      padding-top:25px;
@@ -52,99 +59,157 @@ css <- HTML("
 #       UI       #
 ##################
 ui <- fluidPage(
-  #theme = shinytheme("cerulean"), # Set up a theme
-  tags$style(css), # Set up css
+
+  # Set up css for the whole app
+  tags$style(css),
+
+  # Set up shinyjs so that we can use some of its functions
+  # (e.g. hide, show, toggle)
+  useShinyjs(), 
   
-  useShinyjs(),  # Set up shinyjs
-  
+  # App title
   titlePanel("DESeq2 Viewer"),
 
   
+  # This layout contains all the controls for filtering and downloading the data
+  # The sidebar is on the left and the main panel is on the right
+  # The sidebar has a width of 2 (out of 12)
   sidebarLayout(
     sidebarPanel(
+      width = 2,
+      # Deseq2 output file input
       fileInput("csv", "Choose DESeq2 Output File", accept = c(".csv")),
-      sliderInput("thresholdSliderLOG2FC", "Log2FoldChange Threshold: ", min = 0, max = 5, value = 0, step = 0.5),
-      sliderTextInput("thresholdSliderPADJ", "padj Threshold: ", choices = c(0.01, 0.05, "NONE"), selected = "NONE", grid = TRUE),
-      radioButtons("DEside", "DE type:",
-                   c("Both" = "both",
-                     "Down Regulated" = "down",
-                     "Up Regulated" = "up"
-                     )),
-      checkboxInput("KeepCodingGenes", "Show only protein coding genes", value = FALSE),
-      checkboxInput("KeepKnownGenes", "Show only known genes", value = FALSE),
-      downloadButton("downloadMainTable", "Save current selection"),
-      hr(),
-      
-      width = 2
-    ),
+      # Filtering by Log2FoldChange & padj
+      sliderInput(inputId = "thresholdSliderLOG2FC",
+                  label = "Log2FoldChange Threshold: ",
+                  min = 0, max = 5, value = 0, step = 0.5),
+      sliderTextInput(inputId = "thresholdSliderPADJ",
+                      label = "padj Threshold: ",
+                      choices = c(0.01, 0.05, "NONE"),
+                      selected = "NONE",
+                      grid = TRUE),
+      # Filtering by DE type (down, up or both)
+      radioButtons(inputId = "DEside",
+                   label = "DE type:",
+                   choices = c("Both" = "both",
+                               "Down Regulated" = "down",
+                               "Up Regulated" = "up"),
+                   selected = "both"),
+      # Filtering by coding genes or not
+      checkboxInput(inputId = "KeepCodingGenes",
+                    label = "Show only protein coding genes",
+                    value = FALSE),
+      # Filtering by known genes or not
+      checkboxInput(inputId = "KeepKnownGenes",
+                    label = "Show only known genes",
+                    value = FALSE),
+      # Save current selection button (to download as a csv file)
+      downloadButton(outputId = "downloadMainTable",
+                     label = "Save current selection"),
+      hr()
+    ), # End of sidebar panel
     
     mainPanel(
-      # main Dataframe
+
+      ## Main Dataframe ##
       fluidRow(
-        column(12, h3(textOutput("starterText"), align = "center")),
+        column(12, align = "center",
+               h3(textOutput(outputId = "starterText")))
       ),
-      h3(textOutput("DFtitle")),
-      DTOutput("table"),
+      h3(textOutput(outputId = "DFtitle")),
+      DTOutput(outputId = "table"),
       hr(),
-      # Volcano plot
+
+      ## Volcano plot ##
       fluidRow(
-        column(12, h4(textOutput("VolcanoMainText"), align = "center")),
+        column(12, align = "center",
+               h4(textOutput(outputId = "VolcanoMainText")))
       ),
       fluidRow(
-        column(12, actionButtonStyled("launchVolcano", "Volcano Plot", type="default"), align = "center"),
+        column(12, align = "center",
+               actionButtonStyled(inputId = "launchVolcano", 
+                                  label = "Volcano Plot", 
+                                  type = "default")),
       ),
       fluidRow(
-        column(9, uiOutput("plotVolcano")),
-        column(3, plotOutput("legendVolcano"))
-      ),
-      hr(),
-      # Gprofiler
-      fluidRow(
-        column(12, h4(textOutput("GprofilerMainText"), align = "center")),
-      ),
-      fluidRow(
-        column(6, actionButtonStyled("launchGprofiler", "Gprofiler", type="default"), align = "right", class = "pad-top"),
-        column(6, selectInput("chooseOrganism", "Choose a specie",
-                             choices = c("Human","Dog"),
-                             selected = "Human",
-                             width = "200px"), align = "left"),
-      ),
-      fluidRow(
-        column(12, h5(textOutput("GPtext"), align = "center")),
-      ),
-      tabsetPanel(id="TabsetGprofiler",
-        tabPanel("Plot", fluidRow(
-          column(10, uiOutput("plotPathways")),
-          column(2, selectInput("nbTerm", tags$div("You have a lot of terms!", tags$br(),"Choose how many to display"),
-                                choices = c("20","30","40","ALL"),
-                                selected = "ALL",
-                                width = "200px")))),
-        tabPanel("Table", DTOutput("gprofilerTable"),
-                 downloadButton("downloadGprofilerTable", "Save Gprofiler table"))
+        column(9, 
+               uiOutput(outputId = "plotVolcano")),
+        column(3, 
+               plotOutput(outputId = "legendVolcano"))
       ),
       hr(),
-      # GSEA
+
+      ## Gprofiler ##
       fluidRow(
-        column(12, h4(textOutput("GSEAMainText"), align = "center")),
+        column(12, align = "center",
+               h4(textOutput(outputId = "GprofilerMainText")))
       ),
       fluidRow(
-        column(6,actionButtonStyled("launchFGSEA", "GSEA", type="default"), align = "right", class = "pad-top"),
-        column(6,selectInput("chooseGSEADB", "Choose a database",
-                             choices = c("GO:MF","GO:CC","GO:BP","KEGG","REACTOME","WikiPathways","TRANSFAC & JASPAR PWMs","miRTarBase","CORUM","Human Phenotype Ontology"),
-                             width = "200px"), align = "left"),
+        column(6, align = "right", class = "pad-top",
+               actionButtonStyled(inputId = "launchGprofiler", 
+                                  label = "Gprofiler", 
+                                  type = "default")),
+        column(6, align = "left",
+               selectInput(inputId = "chooseOrganism", 
+                           label = "Choose a specie",
+                           choices = c("Human","Dog"),
+                           selected = "Human",
+                           width = "200px"))
       ),
       fluidRow(
-        column(12, h5(textOutput("GSEAtext"), align = "center")),
+        column(12, align = "center", 
+               h5(textOutput(outputId = "GPtext"))),
       ),
-      
-      tabsetPanel(id="TabsetGSEA",
-        tabPanel("Plot", plotOutput("barplotGSEA")),
-        tabPanel("Network",
-                 p(),
-                 fluidRow(column(12, h5(textOutput("GSEAtext2"), align = "left"))),
-                 visNetworkOutput("pathway_network")),
-        tabPanel("Table", DTOutput("fgseaTable"),
-                 downloadButton("downloadGSEATable", "Save GSEA table"))
+      tabsetPanel(id = "TabsetGprofiler",
+        tabPanel(title = "Plot", 
+                 fluidRow(
+                  column(10, uiOutput(outputId = "plotPathways")),
+                  column(2, selectInput(inputId = "nbTerm", 
+                                        tags$div("You have a lot of terms!", 
+                                        tags$br(),"Choose how many to display"),
+                                        choices = c("20","30","40","ALL"),
+                                        selected = "ALL",
+                                        width = "200px")))),
+        tabPanel(title = "Table", 
+                 DTOutput(outputId = "gprofilerTable"),
+                 downloadButton(outputId = "downloadGprofilerTable", 
+                                label = "Save Gprofiler table"))
+      ),
+      hr(),
+
+      ## GSEA ##
+      fluidRow(
+        column(12, align = "center",
+               h4(textOutput(outputId = "GSEAMainText"))),
+      ),
+      fluidRow(
+        column(6, align = "right", class = "pad-top", 
+               actionButtonStyled(inputId = "launchFGSEA", 
+                                  label = "GSEA",
+                                  type="default")),
+        column(6, align = "left",
+               selectInput(inputId = "chooseGSEADB",
+                           label = "Choose a database",
+                           choices = c("GO:MF","GO:CC","GO:BP","KEGG","REACTOME","WikiPathways","TRANSFAC & JASPAR PWMs","miRTarBase","CORUM","Human Phenotype Ontology"),
+                           width = "200px")),
+      ),
+      fluidRow(
+        column(12, align = "center", 
+               h5(textOutput(outputId = "GSEAtext"))),
+      ),
+      tabsetPanel(id = "TabsetGSEA",
+        tabPanel(title = "Plot", 
+                 plotOutput(outputId = "barplotGSEA")),
+        tabPanel(title = "Network",
+                 p(), # Add an empty line for style
+                 fluidRow(
+                  column(12, align = "left",
+                         h5(textOutput(outputId = "GSEAtext2")))),
+                 visNetworkOutput(outputId = "pathway_network")),
+        tabPanel(title = "Table", 
+                 DTOutput(outputId = "fgseaTable"),
+                 downloadButton(outputId = "downloadGSEATable",
+                                label = "Save GSEA table"))
       ),
       hr()
     )
@@ -612,7 +677,7 @@ server <- function(input, output, session) {
     
     # Pathway Network
     fgseaRes <- fgseaRes %>%
-      filter(pval<0.05) # Keep only pathway significative (####change this later for res####)
+      filter(pval<0.05) # Keep only pathway significant (####change this later for res####)
     
     edges <- data.frame(from = character(), to = character(), NES = character())
     nodes <- data.frame(id = character(), group = character())
