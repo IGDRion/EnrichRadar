@@ -43,9 +43,9 @@ Once the file is loaded, the dataframe should now appear on the main page. With 
 ### Volcano plot / Enrichment analysis
 After loading the file, three buttons appear on the main page:
 
-- `Volcano Plot` generates a volcano plot. The data points displayed correspond with the filters applied on the side panel, like for the main table. You can see information about each point by hovering your mouse on it.
-- `Gprofiler` launch a query to several pathways databases with the current selection of gene. It generate a Plot and a Table, accessible with two tabs. You can also select the organism on which you would like to submit the query (for now only Human and Dog are implemented in the application)
-- `GSEA` launch a query to one specified pathway database, which you can select next to the button. Unlike the volcano plot or the Gprofiler analysis, it always launch on the complete list of genes, and it takes into account the Log2FoldChange of every gene into the analysis.
+- `Volcano Plot` generates a volcano plot. The data points displayed correspond with the filters applied on the side panel, like for the main table. You can see information about each point by hovering your mouse on it. It should update whenever you change your filters on the table.
+- `Gprofiler` launch a query to several pathways databases with the current selection of gene. It generate a plot and a pable, accessible with two tabs. You can also select the organism on which you would like to submit the query (for now only Human and Dog are implemented in the application). Unlike the Volcano plot, you should click the button if you want to launch gprofiler again.
+- `GSEA` launch a query to one specified pathway database, which you can select next to the button. Unlike the volcano plot or the Gprofiler analysis, it always launch on the complete list of genes, and it takes into account the Log2FoldChange of every gene into the analysis. Three tabs are available for this analysis: one barplot with over- and under- expressed pathways, one with a network representation of these pathways and genes associated (this can lag if too many nodes), and one with a table.
 
 
 ## Example file
