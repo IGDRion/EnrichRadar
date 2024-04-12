@@ -2,6 +2,8 @@
 if (!require("dipsaus")) install.packages("dipsaus")
 if (!require("DT")) install.packages("DT")
 if (!require("dplyr")) install.packages("dplyr")
+if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+if (!require("fgsea")) BiocManager::install("fgsea")
 if (!require("fgsea")) install.packages("fgsea")
 if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("ggpubr")) install.packages("ggpubr")
@@ -21,8 +23,10 @@ library(fgsea)
 library(ggplot2)
 library(ggpubr)
 library(gprofiler2)
+library(emojifont)
 library(plotly)
 library(shiny)
+library(shinydashboard)
 library(shinyjs)
 library(shinyWidgets)
 library(stringr)
@@ -68,58 +72,65 @@ ui <- fluidPage(
   useShinyjs(), 
   
   # App title
-  titlePanel("DESeq2 Viewer"),
+  #titlePanel("EnrichRadar"),
 
-  
-  # This layout contains all the controls for filtering and downloading the data
-  # The sidebar is on the left and the main panel is on the right
-  # The sidebar has a width of 2 (out of 12)
-  sidebarLayout(
-    sidebarPanel(
-      width = 2,
-      # Deseq2 output file input
-      fileInput("csv", "Choose DESeq2 Output File", accept = c(".csv")),
-      # Filtering by Log2FoldChange & padj
-      sliderInput(inputId = "thresholdSliderLOG2FC",
-                  label = "Log2FoldChange Threshold: ",
-                  min = 0, max = 5, value = 0, step = 0.5),
-      sliderTextInput(inputId = "thresholdSliderPADJ",
-                      label = "padj Threshold: ",
-                      choices = c(0.01, 0.05, "NONE"),
-                      selected = "NONE",
-                      grid = TRUE),
-      # Filtering by DE type (down, up or both)
-      radioButtons(inputId = "DEside",
-                   label = "DE type:",
-                   choices = c("Both" = "both",
-                               "Down Regulated" = "down",
-                               "Up Regulated" = "up"),
-                   selected = "both"),
-      # Filtering by coding genes or not
-      checkboxInput(inputId = "KeepCodingGenes",
-                    label = "Show only protein coding genes",
-                    value = FALSE),
-      # Filtering by known genes or not
-      checkboxInput(inputId = "KeepKnownGenes",
-                    label = "Show only known genes",
-                    value = FALSE),
-      # Save current selection button (to download as a csv file)
-      downloadButton(outputId = "downloadMainTable",
-                     label = "Save current selection"),
-      hr()
-    ), # End of sidebar panel
+  dashboardPage(
+    # HEADER
+    dashboardHeader(title = span("EnrichRadar", style = "font-size: 40px")),
     
-    mainPanel(
-
+    # SIDEBAR
+    dashboardSidebar(
+      # This layout contains all the controls for filtering and downloading the data
+      # The sidebar is on the left and the main panel is on the right
+      # The sidebar has a width of 2 (out of 12)
+     
+          
+          # Deseq2 output file input
+          fileInput("csv", "Choose DESeq2 Output File", accept = c(".csv")),
+          # Filtering by Log2FoldChange & padj
+          sliderInput(inputId = "thresholdSliderLOG2FC",
+                      label = "Log2FoldChange Threshold: ",
+                      min = 0, max = 5, value = 0, step = 0.5),
+          sliderTextInput(inputId = "thresholdSliderPADJ",
+                          label = "padj Threshold: ",
+                          choices = c(0.01, 0.05, "NONE"),
+                          selected = "NONE",
+                          grid = TRUE),
+          # Filtering by DE type (down, up or both)
+          radioButtons(inputId = "DEside",
+                       label = "DE type:",
+                       choices = c("Both" = "both",
+                                   "Down Regulated" = "down",
+                                   "Up Regulated" = "up"),
+                       selected = "both"),
+          # Filtering by coding genes or not
+          checkboxInput(inputId = "KeepCodingGenes",
+                        label = "Show only protein coding genes",
+                        value = FALSE),
+          # Filtering by known genes or not
+          checkboxInput(inputId = "KeepKnownGenes",
+                        label = "Show only known genes",
+                        value = FALSE)
+          ),
+          # End of sidebar panel
+    
+    # BODY
+    dashboardBody(
       ## Main Dataframe ##
       fluidRow(
         column(12, align = "center",
                h3(textOutput(outputId = "starterText")))
       ),
+      # Title of the table (filename)
       h3(textOutput(outputId = "DFtitle")),
+      # Save current selection button (to download as a csv file)
+      downloadButton(outputId = "downloadMainTable",
+                     label = "Save current table"),
+      p(),
+      # The main table
       DTOutput(outputId = "table"),
       hr(),
-
+      
       ## Volcano plot ##
       fluidRow(
         column(12, align = "center",
@@ -131,6 +142,7 @@ ui <- fluidPage(
                                   label = "Volcano Plot", 
                                   type = "default")),
       ),
+      p(),
       fluidRow(
         column(9, 
                uiOutput(outputId = "plotVolcano")),
@@ -138,7 +150,7 @@ ui <- fluidPage(
                plotOutput(outputId = "legendVolcano"))
       ),
       hr(),
-
+      
       ## Gprofiler ##
       fluidRow(
         column(12, align = "center",
@@ -161,22 +173,22 @@ ui <- fluidPage(
                h5(textOutput(outputId = "GPtext"))),
       ),
       tabsetPanel(id = "TabsetGprofiler",
-        tabPanel(title = "Plot", 
-                 fluidRow(
-                  column(10, uiOutput(outputId = "plotPathways")),
-                  column(2, selectInput(inputId = "nbTerm", 
-                                        tags$div("You have a lot of terms!", 
-                                        tags$br(),"Choose how many to display"),
-                                        choices = c("20","30","40","ALL"),
-                                        selected = "ALL",
-                                        width = "200px")))),
-        tabPanel(title = "Table", 
-                 DTOutput(outputId = "gprofilerTable"),
-                 downloadButton(outputId = "downloadGprofilerTable", 
-                                label = "Save Gprofiler table"))
+                  tabPanel(title = "Plot", 
+                           fluidRow(
+                             column(10, uiOutput(outputId = "plotPathways")),
+                             column(2, selectInput(inputId = "nbTerm", 
+                                                   tags$div("You have a lot of terms!", 
+                                                            tags$br(),"Choose how many to display"),
+                                                   choices = c("20","30","40","ALL"),
+                                                   selected = "ALL",
+                                                   width = "200px")))),
+                  tabPanel(title = "Table", 
+                           DTOutput(outputId = "gprofilerTable"),
+                           downloadButton(outputId = "downloadGprofilerTable", 
+                                          label = "Save Gprofiler table"))
       ),
       hr(),
-
+      
       ## GSEA ##
       fluidRow(
         column(12, align = "center",
@@ -198,24 +210,23 @@ ui <- fluidPage(
                h5(textOutput(outputId = "GSEAtext"))),
       ),
       tabsetPanel(id = "TabsetGSEA",
-        tabPanel(title = "Plot", 
-                 plotOutput(outputId = "barplotGSEA")),
-        tabPanel(title = "Network",
-                 p(), # Add an empty line for style
-                 fluidRow(
-                  column(12, align = "left",
-                         h5(textOutput(outputId = "GSEAtext2")))),
-                 visNetworkOutput(outputId = "pathway_network")),
-        tabPanel(title = "Table", 
-                 DTOutput(outputId = "fgseaTable"),
-                 downloadButton(outputId = "downloadGSEATable",
-                                label = "Save GSEA table"))
+                  tabPanel(title = "Plot", 
+                           plotOutput(outputId = "barplotGSEA")),
+                  tabPanel(title = "Network",
+                           p(), # Add an empty line for style
+                           fluidRow(
+                             column(12, align = "left",
+                                    h5(textOutput(outputId = "GSEAtext2")))),
+                           visNetworkOutput(outputId = "pathway_network")),
+                  tabPanel(title = "Table", 
+                           DTOutput(outputId = "fgseaTable"),
+                           downloadButton(outputId = "downloadGSEATable",
+                                          label = "Save GSEA table"))
       ),
       hr()
     )
   )
-)
-
+) 
 
 ###################
 #     SERVER     #
@@ -228,6 +239,7 @@ server <- function(input, output, session) {
   })
   
   # Hide buttons until data is loaded
+  shinyjs::hide("downloadMainTable")
   shinyjs::hide("launchVolcano")
   shinyjs::hide("launchGprofiler")
   shinyjs::hide("chooseOrganism")
@@ -244,6 +256,7 @@ server <- function(input, output, session) {
   shinyjs::hide("nbTerm")
   
   # Hide main/hint text
+  shinyjs::hide("DFtitle")
   shinyjs::hide("VolcanoMainText")
   shinyjs::hide("GprofilerMainText")
   shinyjs::hide("GSEAMainText")
@@ -259,13 +272,15 @@ server <- function(input, output, session) {
     if (!is.null(data())){
       # Hide starter text
       shinyjs::hide("starterText")
-      # Show analysis buttons
+      # Show download/analysis buttons
+      shinyjs::show("downloadMainTable")
       shinyjs::show("launchVolcano")
       shinyjs::show("launchGprofiler")
       shinyjs::show("chooseOrganism")
       shinyjs::show("launchFGSEA")
       shinyjs::show("chooseGSEADB")
       # Show main/hint text
+      shinyjs::show("DFtitle")
       shinyjs::show("VolcanoMainText")
       shinyjs::show("GprofilerMainText")
       shinyjs::show("GSEAMainText")
@@ -305,7 +320,7 @@ server <- function(input, output, session) {
   
   # Title to the table (file name)
   output$DFtitle <- renderText({
-    input$csv$name
+    paste0("File analyzed: ", input$csv$name)
   })
   
   # Render the filtered table
@@ -549,7 +564,7 @@ server <- function(input, output, session) {
       
       # Make Gprofiler tabset appear 
       output$GPtext <- renderText({
-        "NB: You need to press the button again to update the plot/table with your current data selection."
+        paste0(emoji("warning"), " You need to press the button again to update the plot/table with your current data selection. ", emoji("warning"))
       })
       
       shinyjs::show("GPtext")
