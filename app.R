@@ -10,6 +10,7 @@ if (!require("ggpubr")) install.packages("ggpubr")
 if (!require("gprofiler2")) install.packages("gprofiler2")
 if (!require("plotly")) install.packages("plotly")
 if (!require("shiny")) install.packages("shiny")
+if (!require("shiny")) install.packages("shinydashboard")
 if (!require("shinyjs")) install.packages("shinyjs")
 if (!require("shinyWidgets")) install.packages("shinyWidgets")
 if (!require("stringr")) install.packages("stringr")
@@ -45,9 +46,18 @@ options(shiny.maxRequestSize = 50*1024^2)
 # - move the filter box to the left and add some bottom padding to be more consistent
 # - move the filter box up a bit to align it with the length select box
 css <- HTML("
+/* customizing padding for buttons in the dashboard body */
   .row .pad-top {
      padding-top:25px;
   }
+  
+  /* customizing padding help button in the dashboard header */
+  .main-header .dropdown {
+     padding-top:9px;
+     padding-right:25px;
+  }
+  
+  /* customizing buttons of the DT table */
   .dataTables_wrapper .dataTables_length {
      float: left;
   }
@@ -71,55 +81,52 @@ ui <- fluidPage(
   # (e.g. hide, show, toggle)
   useShinyjs(), 
   
-  # App title
-  #titlePanel("EnrichRadar"),
-
+  # Use dashboard for the application
   dashboardPage(
     # HEADER
-    dashboardHeader(title = span("EnrichRadar", style = "font-size: 40px")),
+    dashboardHeader(title = span("EnrichRadar", style = "font-size: 40px"),
+                    tags$li(class = "dropdown", actionButtonStyled(inputId = "HelpButton", 
+                                                                   label = "Help", 
+                                                                   type = "warning"))),
     
     # SIDEBAR
     dashboardSidebar(
       # This layout contains all the controls for filtering and downloading the data
-      # The sidebar is on the left and the main panel is on the right
-      # The sidebar has a width of 2 (out of 12)
-     
-          
-          # Deseq2 output file input
-          fileInput("csv", "Choose DESeq2 Output File", accept = c(".csv")),
-          # Filtering by Log2FoldChange & padj
-          sliderInput(inputId = "thresholdSliderLOG2FC",
-                      label = "Log2FoldChange Threshold: ",
-                      min = 0, max = 5, value = 0, step = 0.5),
-          sliderTextInput(inputId = "thresholdSliderPADJ",
-                          label = "padj Threshold: ",
-                          choices = c(0.01, 0.05, "NONE"),
-                          selected = "NONE",
-                          grid = TRUE),
-          # Filtering by DE type (down, up or both)
-          radioButtons(inputId = "DEside",
-                       label = "DE type:",
-                       choices = c("Both" = "both",
-                                   "Down Regulated" = "down",
-                                   "Up Regulated" = "up"),
-                       selected = "both"),
-          # Filtering by coding genes or not
-          checkboxInput(inputId = "KeepCodingGenes",
-                        label = "Show only protein coding genes",
-                        value = FALSE),
-          # Filtering by known genes or not
-          checkboxInput(inputId = "KeepKnownGenes",
-                        label = "Show only known genes",
-                        value = FALSE)
-          ),
-          # End of sidebar panel
+      # Deseq2 output file input
+      fileInput("csv", "Choose DESeq2 Output File", accept = c(".csv")),
+      # Filtering by Log2FoldChange & padj
+      sliderInput(inputId = "thresholdSliderLOG2FC",
+                  label = "Log2FoldChange Threshold: ",
+                  min = 0, max = 5, value = 0, step = 0.5),
+      sliderTextInput(inputId = "thresholdSliderPADJ",
+                      label = "padj Threshold: ",
+                      choices = c(0.01, 0.05, "NONE"),
+                      selected = "NONE",
+                      grid = TRUE),
+      # Filtering by DE type (down, up or both)
+      radioButtons(inputId = "DEside",
+                   label = "DE type:",
+                   choices = c("Both" = "both",
+                               "Down Regulated" = "down",
+                               "Up Regulated" = "up"),
+                   selected = "both"),
+      # Filtering by coding genes or not
+      checkboxInput(inputId = "KeepCodingGenes",
+                    label = "Show only protein coding genes",
+                    value = FALSE),
+      # Filtering by known genes or not
+      checkboxInput(inputId = "KeepKnownGenes",
+                    label = "Show only known genes",
+                    value = FALSE)
+      ),
+      # End of sidebar panel
     
     # BODY
     dashboardBody(
       ## Main Dataframe ##
       fluidRow(
         column(12, align = "center",
-               h3(textOutput(outputId = "starterText")))
+               h2(textOutput(outputId = "starterText")))
       ),
       # Title of the table (filename)
       h3(textOutput(outputId = "DFtitle")),
@@ -232,6 +239,34 @@ ui <- fluidPage(
 #     SERVER     #
 ##################
 server <- function(input, output, session) {
+  
+  # Help button
+  observeEvent(input$HelpButton, {
+    
+    showModal(modalDialog(
+      # Volcano plot
+      tags$h2('Volcano plot'),
+      tags$h4('A volcano plot is a graphical tool used in gene expression analysis to visualize the relationship between fold change and statistical significance, 
+              helping identify genes that are significantly differentially expressed between experimental conditions.'),
+      # Gprofiler
+      tags$h2('Gprofiler'),
+      tags$h4('performs functional enrichment analysis, also known as over-representation analysis (ORA) or gene set enrichment analysis,
+              on input gene list. It maps genes to known functional information sources and detects statistically significantly enriched terms'),
+      # GSEA
+      tags$h2('GSEA'),
+      tags$h4('Gene Set Enrichment Analysis (GSEA) is a computational method that determines whether an a priori defined set of genes shows statistically 
+      significant, concordant differences between two biological states (e.g. phenotypes). '),
+      # Quit button
+      footer = actionButton('QuitHelp', 'Ok'),
+    ))
+  })
+  
+  # When quit button is clicked on help, close the help window
+  observeEvent(input$QuitHelp, {
+    removeModal()
+  })
+  
+  
   
   # Main text for Gprofiler analysis
   output$starterText <- renderText({
