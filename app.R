@@ -186,7 +186,7 @@ ui <- fluidPage(
                              column(2, selectInput(inputId = "nbTerm", 
                                                    tags$div("You have a lot of terms!", 
                                                             tags$br(),"Choose how many to display"),
-                                                   choices = c("20","30","40","ALL"),
+                                                   choices = c("10","20","30","ALL"),
                                                    selected = "ALL",
                                                    width = "200px")))),
                   tabPanel(title = "Table", 
@@ -519,9 +519,13 @@ server <- function(input, output, session) {
         # Put a space after each coma in intersection column, to improve visualisation in dataframe
         pathways_genes$intersection <- gsub(",", ", ", pathways_genes$intersection)
         
-        # Reorder dataframe
+        # Reorder dataframe columns
         pathways_genes <- pathways_genes %>%
           select(term_name, source, p_value, gene_count, intersection)
+        
+        # Reorder dataframe by pvalue (not descending order as the plot already reorder them)
+        pathways_genes <- pathways_genes %>%
+          arrange(p_value)
         
         # Print dataframe on screen
         output$gprofilerTable <- renderDT({
@@ -570,7 +574,7 @@ server <- function(input, output, session) {
         }
         
         # Button to reduce number of genes on the enrichment terms/pathways barplot if there are too many
-        if (nrow(pathways_genes) > 50) {
+        if (nrow(pathways_genes) > 40) {
           shinyjs::show("nbTerm")
           observe ({
             output$plotPathways <- renderUI({ 
