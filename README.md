@@ -1,4 +1,4 @@
-# DESeq2 viewer
+# EnrichRadar
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -10,7 +10,7 @@ This R shiny application allows to view the output of DESeq2 and make interactiv
 - Git clone the repository:
 
 ```bash
-git clone https://github.com/IGDRion/deseq2-viewer.git
+git clone https://github.com/IGDRion/EnrichRadar.git
 ```
 
 - Install the required R libraries using e.g. with `conda`
@@ -25,7 +25,7 @@ conda install conda-forge::r-base conda-forge::r-shiny r::r-dt conda-forge::r-gg
 Rscript /path/to/app.R
 ```
 
-It should open the application on your web browser : `http://127.0.0.1:7449`.
+It should open the application on your web browser : `http://127.0.0.1`.
 
 ![EnrichRadar - start page](https://github.com/IGDRion/EnrichRadar/blob/main/assets/empty_application.png)
 
