@@ -36,13 +36,16 @@ To load a DESeq2 output file, click on the `Browse...` button on the top left co
 ![EnrichRadar - data loaded](https://github.com/IGDRion/EnrichRadar/blob/main/assests/main_table.png)
 
 ### Data Filtering
-Once the file is loaded, the dataframe should now appear on the main page. With the panel on the left side, you can filter the table by several criteria:
+Once the file is loaded, the dataframe should now appear on the main page. With the panel on the left side (see next image), you can filter the table by several criteria:
 
 - You can use the `Log2FoldChange Threshold` slider if you want to filter genes based on their differential expression level (By default all genes are kept).
 - In the same way, you can use the `padj Threshold` slider to filter genes that have a padj value above the chosen threshold (By default all genes are kept).
 - `DE type` buttons are to select which type of differential expression you want to see : "Both" shows down and up regulated genes (positive & negative Log2FoldChange), "Down" shows only down regulated genes (negative Log2FoldChange), and "Up" shows only up regulated genes (positive Log2FoldChange).
 - Two checkboxes allows you to filter if you want to see only protein coding genes & only known genes.
-- `Save current selection` button allows to save the dataframe with all the filters applied to it (sorting of rows are not saved however).
+
+
+
+- `Save current table` button on top of the table allows to save the dataframe with all the filters applied to it (sorting of rows are not saved however).
 
 ### Volcano plot / Enrichment analysis
 After loading the file, three buttons appear on the main page:
