@@ -8,7 +8,7 @@ EnrichRadar is a Rshiny application that provide an intuitive interface for data
 INSERT IMAGE OF APP HERE
 
 ## Installation & Usage
-For details on how to install and use the application, please visit the [Wiki](https://github.com/IGDRion/EnrichRadar/wiki/EnrichRadar-Wiki)
+For details on how to install and use the application, please visit the [Wiki](https://github.com/IGDRion/EnrichRadar/wiki/EnrichRadar-Wiki)  
 An online version of the tool is also available [here](https://shiny-dog.univ-rennes.fr/deseq2-viewer/).
 
 ## Support
