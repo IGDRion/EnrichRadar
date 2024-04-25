@@ -5,7 +5,8 @@
 ## Description
 EnrichRadar is a Rshiny application that provide an intuitive interface for data vizualisation and manipulation of differential analyses datasets. On top of that enrichment analysis via Gprofiler2 and/or GSEA is possible directly on the application.
 
-INSERT IMAGE OF APP HERE
+![EnrichRadar - start page](https://github.com/IGDRion/EnrichRadar/blob/main/assets/general_screenshot1.png)
+![EnrichRadar - start page](https://github.com/IGDRion/EnrichRadar/blob/main/assets/general_screenshot2.png)
 
 ## Installation & Usage
 For details on how to install and use the application, please visit the [Wiki](https://github.com/IGDRion/EnrichRadar/wiki/EnrichRadar-Wiki)  
