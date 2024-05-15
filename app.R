@@ -139,6 +139,11 @@ ui <- fluidPage(
       DTOutput(outputId = "table"),
       hr(),
       
+      fluidRow(
+        column(12, align = "center",
+               h3(textOutput(outputId = "wrongDATAmessage")))
+      ),
+      
       ## Volcano plot ##
       fluidRow(
         column(12, align = "center",
@@ -293,6 +298,7 @@ server <- function(input, output, session) {
   
   # Hide main/hint text
   shinyjs::hide("DFtitle")
+  shinyjs::hide("wrongDATAmessage")
   shinyjs::hide("VolcanoMainText")
   shinyjs::hide("GprofilerMainText")
   shinyjs::hide("GSEAMainText")
@@ -328,14 +334,63 @@ server <- function(input, output, session) {
   filtered_data <- reactive({
     thresholdLOG2FC <- input$thresholdSliderLOG2FC
     thresholdPADJ <- input$thresholdSliderPADJ
-    # To filter dataframe with chosen thresholds in Log2FoldChange & padj
-    if (input$DEside == "both") {
-      filtered_data <- data()[abs(data()$log2FoldChange) >= thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
-    } else if (input$DEside == "up") {
-      filtered_data <- data()[data()$log2FoldChange >= thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
-    } else if (input$DEside == "down") {
-      filtered_data <- data()[data()$log2FoldChange <= 0-thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
+    
+    # Detect if the differential expression tool used is DESeq2 or edgeR
+    if (all(c("log2FoldChange", "pvalue", "padj") %in% names(data()))){
+      method = "deseq2"
+    } else if (all(c("logFC", "PValue", "logCPM") %in% names(data()))){
+      method = "edgeR"
+    } else{
+      # Not a differential expression file or not DESeq2 / edgeR
+      method = "WRONG"
     }
+    
+    # Change the name of column to which the filters are applied depending if DESeq2 or edgeR
+    if (method == "deseq2"){
+      shinyjs::hide("wrongDATAmessage")
+      # To filter dataframe with chosen thresholds in Log2FoldChange & padj with DESeq2 data
+      if (input$DEside == "both") {
+        filtered_data <- data()[abs(data()$log2FoldChange) >= thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
+      } else if (input$DEside == "up") {
+        filtered_data <- data()[data()$log2FoldChange >= thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
+      } else if (input$DEside == "down") {
+        filtered_data <- data()[data()$log2FoldChange <= 0-thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
+      }
+    } else if (method == "edgeR"){
+      shinyjs::hide("wrongDATAmessage")
+      # To filter dataframe with chosen thresholds in Log2FoldChange & pvalue with edgeR data
+      if (input$DEside == "both") {
+        filtered_data <- data()[abs(data()$logFC) >= thresholdLOG2FC & data()$PValue <= thresholdPADJ, ]
+      } else if (input$DEside == "up") {
+        filtered_data <- data()[data()$logFC >= thresholdLOG2FC & data()$PValue <= thresholdPADJ, ]
+      } else if (input$DEside == "down") {
+        filtered_data <- data()[data()$logFC <= 0-thresholdLOG2FC & data()$PValue <= thresholdPADJ, ]
+      }
+    } else if (method == "WRONG"){
+      # If the data uploaded are not good (not deseq2 or edgeR, or something else entirely, print a error message and hide all the UI)
+        filtered_data <- NULL
+        output$wrongDATAmessage <- renderText({
+          paste0(emoji("no_entry")," Currently, only files obtained with DESeq2 or edgeR are working with the application, please use a file obtained with one of those two tools and try again", emoji("no_entry"))
+        })
+        
+        shinyjs::hide("downloadMainTable")
+        shinyjs::hide("launchVolcano")
+        shinyjs::hide("launchGprofiler")
+        shinyjs::hide("chooseOrganism")
+        shinyjs::hide("launchFGSEA")
+        shinyjs::hide("chooseGSEADB")
+        # Show main/hint text
+        shinyjs::hide("DFtitle")
+        shinyjs::hide("VolcanoMainText")
+        shinyjs::hide("GprofilerMainText")
+        shinyjs::hide("GSEAMainText")
+        shinyjs::hide("GSEAtext")
+        
+        shinyjs::show("wrongDATAmessage")
+        
+        return(filtered_data)
+    }
+  
     
     # To avoid getting empty rows when moving thresholds: keeps only rows when the full line is not empty
     filtered_data <- filtered_data[rowSums(is.na(filtered_data)) != ncol(filtered_data), ]
