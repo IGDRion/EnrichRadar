@@ -366,26 +366,31 @@ server <- function(input, output, session) {
       } else if (input$DEside == "down") {
         filtered_data <- data()[data()$logFC <= 0-thresholdLOG2FC & data()$PValue <= thresholdPADJ, ]
       }
+      # rename first column as geneID if it is named X
+      if (names(data()[1]) == "X"){
+        filtered_data <- filtered_data %>% 
+          rename(geneID = X)
+      }
     } else if (method == "WRONG"){
       # If the data uploaded are not good (not deseq2 or edgeR, or something else entirely, print a error message and hide all the UI)
         filtered_data <- NULL
         output$wrongDATAmessage <- renderText({
           paste0(emoji("no_entry")," Currently, only files obtained with DESeq2 or edgeR are working with the application, please use a file obtained with one of those two tools and try again", emoji("no_entry"))
         })
-        
+        # Hide buttons
         shinyjs::hide("downloadMainTable")
         shinyjs::hide("launchVolcano")
         shinyjs::hide("launchGprofiler")
         shinyjs::hide("chooseOrganism")
         shinyjs::hide("launchFGSEA")
         shinyjs::hide("chooseGSEADB")
-        # Show main/hint text
+        # Hide main/hint text
         shinyjs::hide("DFtitle")
         shinyjs::hide("VolcanoMainText")
         shinyjs::hide("GprofilerMainText")
         shinyjs::hide("GSEAMainText")
         shinyjs::hide("GSEAtext")
-        
+        # Show data format error
         shinyjs::show("wrongDATAmessage")
         
         return(filtered_data)
@@ -397,13 +402,20 @@ server <- function(input, output, session) {
     
     # Get the full dataframe even with non-expressed genes (with NA in Log2FoldChange and padj) when thresholds are by default
     if (thresholdLOG2FC == 0 & thresholdPADJ == "NONE") {
-      filtered_data <- data()
+      # If edgeR was used replaced the X column by geneID
+      if (names(data()[1]) == "X"){
+        filtered_data <- data() %>%
+          rename(geneID = X)
+      } else {
+        # If DESeq2 was used no need to replace column name
+        filtered_data <- data()
+      }
     }
     if (input$KeepCodingGenes == TRUE) {
       filtered_data <- filtered_data[filtered_data$gene_biotype == "protein_coding",]
     }
     if (input$KeepKnownGenes == TRUE) {
-      filtered_data <- filtered_data[startsWith(filtered_data$geneID,"ENS"),]
+      filtered_data <- filtered_data[grepl("^(ENS|NM|NR)", filtered_data$geneID), ] # Keep only gene ID starting with prefix of Ensembl or RefSeq
     }
     
     return(filtered_data)
@@ -450,6 +462,7 @@ server <- function(input, output, session) {
   output$GSEAtext <- renderText({
     "NB: GSEA analysis is run on the whole data, you can't/there is no need to filter the data first"
   })
+  
   
   
   ###################################
@@ -659,7 +672,7 @@ server <- function(input, output, session) {
       
       # Make Gprofiler tabset appear 
       output$GPtext <- renderText({
-        paste0(emoji("warning"), " You need to press the button again to update the plot/table with your current data selection. ", emoji("warning"))
+        paste0(emoji("warning"), " If you want to update the Gprofiler plot/table with a new selection of genes, you will need to press the button again. ", emoji("warning"))
       })
       
       shinyjs::show("GPtext")
