@@ -222,6 +222,10 @@ ui <- fluidPage(
         column(12, align = "center", 
                h5(textOutput(outputId = "GSEAtext"))),
       ),
+      fluidRow(
+        column(12, align = "center",
+               h4(textOutput(outputId = "noGeneNameError")))
+      ),
       tabsetPanel(id = "TabsetGSEA",
                   tabPanel(title = "Plot", 
                            plotOutput(outputId = "barplotGSEA")),
@@ -278,6 +282,8 @@ server <- function(input, output, session) {
   output$starterText <- renderText({
     "Click on \"Browse\" button of the side panel and choose your DESeq2 output file to start"
   })
+  # Hide biotype buttons in the filter panel
+  shinyjs::hide("KeepCodingGenes")
   
   # Hide buttons until data is loaded
   shinyjs::hide("downloadMainTable")
@@ -302,6 +308,7 @@ server <- function(input, output, session) {
   shinyjs::hide("VolcanoMainText")
   shinyjs::hide("GprofilerMainText")
   shinyjs::hide("GSEAMainText")
+  shinyjs::hide("noGeneNameError")
   shinyjs::hide("GSEAtext")
   
   # Read CSV file
@@ -330,23 +337,39 @@ server <- function(input, output, session) {
     }
   )
   
-  # Create a reactive expression for filtered data
-  filtered_data <- reactive({
-    thresholdLOG2FC <- input$thresholdSliderLOG2FC
-    thresholdPADJ <- input$thresholdSliderPADJ
-    
+  col_names <- reactive({
+    col_names <- colnames(data())
+    return(col_names)
+  })
+  
+  method <- reactive({
     # Detect if the differential expression tool used is DESeq2 or edgeR
-    if (all(c("log2FoldChange", "pvalue", "padj") %in% names(data()))){
+    if (all(c("log2FoldChange", "pvalue", "padj") %in% col_names())){
       method = "deseq2"
-    } else if (all(c("logFC", "PValue", "logCPM") %in% names(data()))){
+    } else if (all(c("logFC", "PValue", "logCPM") %in% col_names())){
       method = "edgeR"
     } else{
       # Not a differential expression file or not DESeq2 / edgeR
       method = "WRONG"
     }
+    return(method)
+  })
+  
+  # Create a reactive expression for filtered data
+  filtered_data <- reactive({
+    thresholdLOG2FC <- input$thresholdSliderLOG2FC
+    thresholdPADJ <- input$thresholdSliderPADJ
+    
+    
+    # Show biotype buttons in the filter panel if there is a "gene_biotype" column in the uploaded dataframe
+    if ("gene_biotype" %in% col_names()){
+      shinyjs::show("KeepCodingGenes")
+    } else{
+      shinyjs::hide("KeepCodingGenes")
+    }
     
     # Change the name of column to which the filters are applied depending if DESeq2 or edgeR
-    if (method == "deseq2"){
+    if (method() == "deseq2"){
       shinyjs::hide("wrongDATAmessage")
       # To filter dataframe with chosen thresholds in Log2FoldChange & padj with DESeq2 data
       if (input$DEside == "both") {
@@ -356,7 +379,7 @@ server <- function(input, output, session) {
       } else if (input$DEside == "down") {
         filtered_data <- data()[data()$log2FoldChange <= 0-thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
       }
-    } else if (method == "edgeR"){
+    } else if (method() == "edgeR"){
       shinyjs::hide("wrongDATAmessage")
       # To filter dataframe with chosen thresholds in Log2FoldChange & pvalue with edgeR data
       if (input$DEside == "both") {
@@ -371,7 +394,7 @@ server <- function(input, output, session) {
         filtered_data <- filtered_data %>% 
           rename(geneID = X)
       }
-    } else if (method == "WRONG"){
+    } else if (method() == "WRONG"){
       # If the data uploaded are not good (not deseq2 or edgeR, or something else entirely, print a error message and hide all the UI)
         filtered_data <- NULL
         output$wrongDATAmessage <- renderText({
@@ -402,7 +425,7 @@ server <- function(input, output, session) {
     
     # Get the full dataframe even with non-expressed genes (with NA in Log2FoldChange and padj) when thresholds are by default
     if (thresholdLOG2FC == 0 & thresholdPADJ == "NONE") {
-      # If edgeR was used replaced the X column by geneID
+      # If edgeR was used replaced the "X" column name by "geneID"
       if (names(data()[1]) == "X"){
         filtered_data <- data() %>%
           rename(geneID = X)
@@ -464,47 +487,125 @@ server <- function(input, output, session) {
   })
   
   
-  
   ###################################
   # Volcano plot
   ###################################
   observeEvent(input$launchVolcano, {
     # Observe() so the plot changes when the table is updated
     observe({
-      volcano_data <- select(data(), geneID,log2FoldChange,padj,gene_biotype,geneID,gene_name)
-      volcano_data$padj <- ifelse((volcano_data$padj == 0 | -log(volcano_data$padj) > 30), exp(-30), volcano_data$padj)
-      volcano_data$gene_biotype <- ifelse(is.na(volcano_data$gene_biotype), "other", volcano_data$gene_biotype)
+      
+       if (method() == "deseq2"){
+         volcano_required_cols <- c("geneID","log2FoldChange","padj","gene_biotype","gene_name")
+       } else if (method() == "edgeR"){
+         volcano_required_cols <- c("geneID","logFC","PValue","gene_biotype","gene_name")
+       }
+        
+      
+      volcano_data <- filtered_data() %>%
+          select(one_of(volcano_required_cols))
+      
+      if (method() == "deseq2"){
+        volcano_data$padj <- ifelse((volcano_data$padj == 0 | -log(volcano_data$padj) > 30), exp(-30), volcano_data$padj)
+      } else if (method() == "edgeR"){
+        volcano_data$PValue <- ifelse((volcano_data$PValue == 0 | -log(volcano_data$PValue) > 30), exp(-30), volcano_data$PValue)
+      }
+      
+      if ("gene_biotype" %in% colnames(volcano_data)){
+        volcano_data$gene_biotype <- ifelse(is.na(volcano_data$gene_biotype), "other", volcano_data$gene_biotype)
+      }
       
       thresholdLOG2FC <- input$thresholdSliderLOG2FC
       thresholdPADJ <- input$thresholdSliderPADJ
-      volcano_data$diff <- ifelse((volcano_data$log2FoldChange >= thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ),"UPPER", 
-                                  ifelse((volcano_data$log2FoldChange <= 0-thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ), "UNDER", "NONE"))
       
+      if (method() == "deseq2"){
+        volcano_data$diff <- ifelse((volcano_data$log2FoldChange >= thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ),"UPPER", 
+                                    ifelse((volcano_data$log2FoldChange <= 0-thresholdLOG2FC) & (volcano_data$padj <= thresholdPADJ), "UNDER", "NONE"))
+      } else if (method() == "edgeR"){
+        volcano_data$diff <- ifelse((volcano_data$logFC >= thresholdLOG2FC) & (volcano_data$PValue <= thresholdPADJ),"UPPER", 
+                                    ifelse((volcano_data$logFC <= 0-thresholdLOG2FC) & (volcano_data$PValue <= thresholdPADJ), "UNDER", "NONE"))
+      }
+      
+      # Keep only points that checks the selected tresholds conditions
       volcano_data <- filter(volcano_data, diff != "NONE")
-      volcano_data <- volcano_data[complete.cases(volcano_data$padj,volcano_data$log2FoldChange,volcano_data$gene_biotype),]
       
-      volcano_data$gene_annot <- ifelse(startsWith(volcano_data$geneID,"ENS"),"KNOWN", "NOVEL") 
+      # 
+      volcano_data$gene_annot <- ifelse(
+        grepl("^(ENS|NM|NR)", volcano_data$geneID),
+        "KNOWN",
+        "NOVEL") 
       
-      VolcanoPlot <- ggplot(volcano_data, aes(x = log2FoldChange, y = -log(padj), shape = gene_biotype, fill = factor(diff), size = gene_annot, 
-                                              text = paste0("GeneID: ",geneID, "<br>Gene name: ",gene_name, "<br>Log2FoldChange: ",log2FoldChange, "<br>p-adjusted: ",padj))) +
-        geom_point(aes(stroke = .2)) +
+      # Set the main aes: different if the input data is from DESeq2 or edgeR: we want to keep the original names of columns untouched
+      if (method() == "deseq2"){
+        VolcanoPlot <- ggplot(volcano_data, aes(x = log2FoldChange, y = -log(padj),
+                                                fill = factor(diff),
+                                                size = gene_annot))
+      } else if (method() == "edgeR") {
+        VolcanoPlot <- ggplot(volcano_data, aes(x = logFC, y = -log(PValue),
+                                                fill = factor(diff),
+                                                size = gene_annot))
+      }
+      
+      # Check if 'gene_biotype' column exists to set or not the shape aes
+      if ("gene_biotype" %in% colnames(volcano_data)) {
+        VolcanoPlot <- VolcanoPlot + aes(shape = gene_biotype)
+      }
+      
+      # Construct the text aesthetic mapping depending of the input used and if gene name information is available
+      if (method() == "deseq2") {
+        if ("gene_name" %in% colnames(volcano_data)) {
+          VolcanoPlot <- VolcanoPlot + aes(text = paste0("GeneID: ", geneID, "<br>Gene name: ", gene_name, "<br>Log2FoldChange: ", log2FoldChange, "<br>p-adjusted: ", padj))
+        } else {
+          VolcanoPlot <- VolcanoPlot + aes(text = paste0("GeneID: ", geneID, "<br>Log2FoldChange: ", log2FoldChange, "<br>p-adjusted: ", padj))
+        }
+      } else if (method() == "edgeR") {
+        if ("gene_name" %in% colnames(volcano_data)) {
+          VolcanoPlot <- VolcanoPlot + aes(text = paste0("GeneID: ", geneID, "<br>Gene name: ", gene_name, "<br>LogFC: ", logFC, "<br>p-value: ", PValue))
+        } else {
+          VolcanoPlot <- VolcanoPlot + aes(text = paste0("GeneID: ", geneID, "<br>LogFC: ", logFC, "<br>p-value: ", PValue))
+        }
+      }
+      
+      # check if gene biotype information is available to display it if yes
+      if ("gene_biotype" %in% colnames(volcano_data)) {
+        VolcanoPlot <- VolcanoPlot + scale_shape_manual(values = c("lncRNA" = 21, "protein_coding" = 23, "other" = 22))
+      }
+    
+      VolcanoPlot <- VolcanoPlot + geom_point(aes(stroke = .2)) +
         # add some lines
         geom_vline(xintercept = thresholdLOG2FC, linetype = "dashed", color = "grey") +
-        geom_vline(xintercept = 0-thresholdLOG2FC, linetype = "dashed", color = "grey") +
+        geom_vline(xintercept = 0 - thresholdLOG2FC, linetype = "dashed", color = "grey") +
         geom_vline(xintercept = 0, color = "black") +
-        labs(x = "Log2FC", y = "-Log(p.adj)", fill="Differential Expression", size="Origin", shape="Gene Biotype") +
-        guides(fill = guide_legend(override.aes = list(size = 6, shape=21)), shape = guide_legend(override.aes = list(size = 6))) +
-        scale_fill_manual(values = c("UNDER"="#56B4E9", "UPPER"="#D55E00")) +
-        scale_shape_manual(values = c("lncRNA" = 21 ,"protein_coding" = 23,"other" = 22)) +
+        # Colors for Under/Overexpressed genes + text style
+        scale_fill_manual(values = c("UNDER" = "#56B4E9", "UPPER" = "#D55E00")) +
         theme(legend.text = element_text(size = 16),
               legend.title = element_text(face = "bold", size = 18))
+      
+      # check the input to display good axis labels
+      if (method() == "deseq2") {
+        VolcanoPlot <- VolcanoPlot + labs(x = "Log2FC", y = "-Log(p.adj)", fill = "Differential Expression", size = "Origin", shape = "Gene Biotype")
+      } else if (method() == "edgeR") {
+        VolcanoPlot <- VolcanoPlot + labs(x = "LogFC", y = "-Log(p-value)", fill = "Differential Expression", size = "Origin", shape = "Gene Biotype")
+      }
+      
+      # check if gene biotype information is available to change legends accordingly
+      if ("gene_biotype" %in% colnames(volcano_data)) {
+        VolcanoPlot <- VolcanoPlot + guides(fill = guide_legend(override.aes = list(size = 6, shape = 21)),
+             shape = guide_legend(override.aes = list(size = 6)))
+      } else {
+        VolcanoPlot <- VolcanoPlot + guides(fill = guide_legend(override.aes = list(size = 6, shape = 21)))
+      }
       
       # Extract legend to keep the ggplot type of legend
       VolcanoLegend <- get_legend(VolcanoPlot) 
       
       # Declare limits of the plot & delete legend 
-      VolcanoPlot <- VolcanoPlot + scale_x_continuous(limits = c(-max(abs(volcano_data$log2FoldChange)), max(abs(volcano_data$log2FoldChange)))) +
-        theme(legend.position="none")
+      if (method() == "deseq2"){
+        VolcanoPlot <- VolcanoPlot + scale_x_continuous(limits = c(-max(abs(volcano_data$log2FoldChange)), max(abs(volcano_data$log2FoldChange)))) +
+          theme(legend.position="none")
+      } else if (method() == "edgeR"){
+        VolcanoPlot <- VolcanoPlot + scale_x_continuous(limits = c(-max(abs(volcano_data$logFC)), max(abs(volcano_data$logFC)))) +
+          theme(legend.position="none")
+      }
       
       # Transform into plotly object
       VolcanoPlot <- ggplotly(VolcanoPlot,
@@ -539,8 +640,14 @@ server <- function(input, output, session) {
     }
     
     # Prepare and launch Gprofiler
-    gprofilerdata <- filtered_data() %>%
-      arrange(desc(abs(log2FoldChange)))
+    
+    if (method() == "deseq2"){
+      gprofilerdata <- filtered_data() %>%
+        arrange(desc(abs(log2FoldChange)))
+    } else if (method() == "edgeR"){
+      gprofilerdata <- filtered_data() %>%
+        arrange(desc(abs(logFC)))
+    }
     
     GprofilerGeneList <- gprofilerdata[["geneID"]][1:nrow(gprofilerdata)] 
     
@@ -686,7 +793,7 @@ server <- function(input, output, session) {
       updateActionButtonStyled(session, "launchGprofiler", type="warning")
       output$plotPathways <- renderUI({
         HTML(
-          as.character(div(style="color: orange", "Query size too big. Max query size is 1000 genes. Please filter the genes before retrying."))
+          as.character(div(style="color: orange", paste0("Query size too big (", nrow(filtered_data()),"). Max query size is 1000 genes. Please filter the genes before retrying.")))
         )
       }) 
     }
@@ -696,7 +803,7 @@ server <- function(input, output, session) {
   
   
   ###################################
-  # GSEA analysis with fgsea package
+  # GSEA analysis with fgsea package #
   ###################################
 
   observeEvent(input$launchFGSEA, {
@@ -707,206 +814,242 @@ server <- function(input, output, session) {
     })
     
     # Log2FC for each genes (vector of Log2FC with genes ID associated as names)
-    genes <- select(data(), gene_name, log2FoldChange)
-    genes <- na.omit(genes)
-    genes <- genes[order(genes$log2FoldChange, decreasing=TRUE),]
+    # Depend which type of input is used between DESeq2 and edgeR
+    # Take geneID if gene name not available
     
-    ordered_gene_name <- genes$gene_name
-    genes$gene_name <- NULL
-    genes <- as.vector(genes$log2FoldChange)
-    
-    names(genes) <- ordered_gene_name
-    
-
-    # Import a pathway database and convert it into a table 
-    processDB = function(DB){
-      pathways=strsplit(scan(DB,sep="\n",what="character"),"\t")
-      names(pathways)=sapply(pathways,function(x)x[1])
-      pathways=lapply(pathways,function(x)x[3:length(x)])
-      return(pathways)
-    }
-    
-    # Changing the database used for GSEA analysis
-    if (input$chooseGSEADB == "GO:MF"){
-      file <- "GO_Molecular_Function_2023.txt"
-    } else if (input$chooseGSEADB == "GO:CC"){
-      file <- "GO_Cellular_Component_2023.txt"
-    } else if (input$chooseGSEADB == "GO:BP"){
-      file <- "GO_Biological_Process_2023.txt"
-    } else if (input$chooseGSEADB == "KEGG"){
-      file <- "KEGG_2021_Human.txt"
-    } else if (input$chooseGSEADB == "REACTOME"){
-      file <- "Reactome_2022.txt"
-    } else if (input$chooseGSEADB == "WikiPathways"){
-      file <- "WikiPathway_2023_Human.txt"
-    } else if (input$chooseGSEADB == "TRANSFAC & JASPAR PWMs"){
-      file <- "TRANSFAC_and_JASPAR_PWMs.txt"
-    } else if (input$chooseGSEADB == "miRTarBase"){
-      file <- "miRTarBase_2017.txt"
-    } else if (input$chooseGSEADB == "CORUM"){
-      file <- "CORUM.txt"
-    } else if (input$chooseGSEADB == "Human Phenotype Ontology"){
-      file <- "Human_Phenotype_Ontology.txt"
-    }
-    
-    pathways <- processDB(paste0("./enrichR_databases/",file))
-    
-    
-    # Define min and max number of genes associated with a pathway
-    minSize = 3
-    maxSize = 200
-  
-    # Launching GSEA analysis
-    fgseaRes = data.frame(fgsea(pathways, genes, minSize=minSize, maxSize=maxSize))
-
-    # Recovery of results
-    cutpval = 0.05
-    fdr = FALSE
-
-    pv = ifelse(fdr == TRUE,"padj","pval")
-    res = fgseaRes[which(fgseaRes[,pv] < cutpval),c("pathway", "padj","pval", "ES", "leadingEdge", "NES")]
-    res$genes = unlist(lapply(res$leadingEdge, function(x) paste(x, collapse = ", ")))
-    res = res[,c("pathway", pv, "ES","NES", "genes")]
-    #print(head(res))
-    respos = res[res[,"ES"]>0,]
-    respos = respos[order(respos[,pv], decreasing = FALSE),]
-    
-    resneg = res[res[,"ES"]<0,]
-    resneg = resneg[order(resneg[,pv], decreasing = FALSE),]
-    
-    # Barplot
-    showCategory = 20
-    respos_plot <- respos[1:min(showCategory, nrow(respos)),]
-    resneg_plot <- resneg[1:min(showCategory, nrow(resneg)),]
-    
-    res_plot <- rbind(respos_plot, resneg_plot)
-    res_plot[,"pval"]<- res_plot[,pv]
-    
-    # Make a column with shorter pathway names for pathway too long, to avoid excessive axis text size
-    res_plot <- res_plot %>%
-      mutate(pathway_shortname = ifelse(nchar(pathway) > 35, paste0(str_sub(pathway, end = 35), "..."), pathway))
-    
-    res_plot$pathway <- factor(res_plot$pathway, levels=res_plot$pathway)
-    res_plot <- res_plot[order(res_plot[,"pval"], decreasing = TRUE),]
-    
-    barplot <- ggplot(res_plot, aes(x=reorder(pathway_shortname, -pval), y=-log10(pval), fill =NES))+
-      geom_bar(stat='identity') + 
-      scale_fill_gradient2(midpoint = 0, low = "blue", mid = "white", high = "red", limits=c(min(res_plot$NES), max(res_plot$NES))) +
-      labs(x = "Pathway") +
-      coord_flip() +
-      theme(axis.text = element_text(size = 12),
-            axis.title = element_text(size = 12))
-    
-    
-    # Pathway Network
-    fgseaRes <- fgseaRes %>%
-      filter(pval<0.05) # Keep only pathway significant (####change this later for res####)
-    
-    edges <- data.frame(from = character(), to = character(), NES = character())
-    nodes <- data.frame(id = character(), group = character())
-    
-    for (line in 1:nrow(fgseaRes)){
-      pathway <- fgseaRes[line,"pathway"]
-      leadingEdge <- as.vector(fgseaRes[line,"leadingEdge"][[1]])
-      for (gene in leadingEdge) {
+    if (!("gene_name" %in% colnames(data()))){
+      output$noGeneNameError <- renderText({
+        paste0(emoji("no_entry"), " You don't have a gene_name column in your input. For now, the GSEA analysis need the gene names to work. ", emoji("no_entry"))
+      })
+      # Hide everything produced by previous working GSEA
+      output$barplotGSEA <- renderPlot({ NULL })
+      shinyjs::hide("barplotGSEA")
+      output$pathway_network <- renderVisNetwork({ NULL })
+      shinyjs::hide("pathway_network")
+      output$fgseaTable <- renderDT({ NULL })
+      shinyjs::hide("fgseaTable")
+      shinyjs::hide("TabsetGSEA")
+      shinyjs::show("noGeneNameError")
+      
+    } else {
+      shinyjs::hide("noGeneNameError")
+      if (method() == "deseq2"){
         
-        # add new edges
-        new_row <- data.frame(from = gene, to = fgseaRes[line,"pathway"], NES = ifelse(fgseaRes[line,"NES"] > 0, "up", "down"))
-        edges <- rbind(edges, new_row)
+        genes <- select(data(), gene_name, log2FoldChange)
+        genes <- na.omit(genes)
+        genes <- genes[order(genes$log2FoldChange, decreasing=TRUE),]
+        
+        ordered_gene_name <- genes$gene_name
+        genes$gene_name <- NULL
+        genes <- as.vector(genes$log2FoldChange)
+        
+        names(genes) <- ordered_gene_name
+        
+      } else if (method() == "edgeR"){
+        
+        genes <- select(data(), gene_name, logFC)
+        genes <- na.omit(genes)
+        genes <- genes[order(genes$logFC, decreasing=TRUE),]
+        
+        ordered_gene_name <- genes$gene_name
+        genes$gene_name <- NULL
+        genes <- as.vector(genes$logFC)
+        
+        names(genes) <- ordered_gene_name
       }
-    }
     
-    # count number of edges for each genes
-    edges_count <- edges %>%
-      group_by(from) %>%
-      mutate(edgesCount = n()) %>%
-      select(-to, -NES)
-    
-    
-    # add nodes + groups of nodes + number of edges for genes
-    for (edge in unique(edges$from)){
-      new_row <- data.frame(id = edge, group ="gene")
-      nodes <- rbind(nodes, new_row)
-    }
-    
-    for (edge in unique(edges$to)){
-      new_row <- data.frame(id = edge, group ="pathway")
-      nodes <- rbind(nodes, new_row)
-    }
-    
-    nodes <- left_join(x = nodes, y = edges, join_by(id == to)) %>%
-      select(-from) %>%
-      unique()
-    
-    
-    nodes <- left_join(x = nodes, y = edges_count, join_by(id == from)) %>%
-      unique()
-    
-    nodes$group <- ifelse(nodes$group == "pathway", 
-                          paste(nodes$group, nodes$NES, sep = "_"),
-                          nodes$group)
-    
-    nodes$NES = NULL
-    
-    # add titles to nodes for caption
-    nodes$title <- nodes$id
-    
+      # Import a pathway database and convert it into a table 
+      processDB = function(DB){
+        pathways=strsplit(scan(DB,sep="\n",what="character"),"\t")
+        names(pathways)=sapply(pathways,function(x)x[1])
+        pathways=lapply(pathways,function(x)x[3:length(x)])
+        return(pathways)
+      }
+      
+      # Changing the database used for GSEA analysis
+      if (input$chooseGSEADB == "GO:MF"){
+        file <- "GO_Molecular_Function_2023.txt"
+      } else if (input$chooseGSEADB == "GO:CC"){
+        file <- "GO_Cellular_Component_2023.txt"
+      } else if (input$chooseGSEADB == "GO:BP"){
+        file <- "GO_Biological_Process_2023.txt"
+      } else if (input$chooseGSEADB == "KEGG"){
+        file <- "KEGG_2021_Human.txt"
+      } else if (input$chooseGSEADB == "REACTOME"){
+        file <- "Reactome_2022.txt"
+      } else if (input$chooseGSEADB == "WikiPathways"){
+        file <- "WikiPathway_2023_Human.txt"
+      } else if (input$chooseGSEADB == "TRANSFAC & JASPAR PWMs"){
+        file <- "TRANSFAC_and_JASPAR_PWMs.txt"
+      } else if (input$chooseGSEADB == "miRTarBase"){
+        file <- "miRTarBase_2017.txt"
+      } else if (input$chooseGSEADB == "CORUM"){
+        file <- "CORUM.txt"
+      } else if (input$chooseGSEADB == "Human Phenotype Ontology"){
+        file <- "Human_Phenotype_Ontology.txt"
+      }
+      
+      pathways <- processDB(paste0("./enrichR_databases/",file))
+      
+      
+      # Define min and max number of genes associated with a pathway
+      minSize = 3
+      maxSize = 200
+      
+      # Launching GSEA analysis
+      fgseaRes = data.frame(fgsea(pathways, genes, minSize=minSize, maxSize=maxSize))
+      
+      # Recovery of results
+      cutpval = 0.05
+      fdr = FALSE
   
-    # Network
-    pathway_network <- visNetwork(nodes, edges) %>%
-      visGroups(groupname = "gene", color = list(background = "palegreen", border = "seagreen", hover = list(background = "seagreen", border = "forestgreen"), highlight = list(background = "palegreen", border = "black")), size = 25) %>%
-      visGroups(groupname = "pathway_up", color = list(background = "tomato", border = "firebrick", hover = list(background = "firebrick", border = "darkred"), highlight = list(background = "tomato", border = "black")), size = 50) %>%
-      visGroups(groupname = "pathway_down", color = list(background = "lightblue", border = "royalblue", hover = list(background = "royalblue", border = "darkblue"), highlight = list(background = "lightblue", border = "black")), size = 50) %>%
-      visLegend(addNodes = list(
-        list(label = "Gene", shape = "circle", color = list(background = "palegreen", border = "seagreen")),
-        list(label = "Pathway \n upregulated", shape = "circle", color = list(background = "tomato", border = "firebrick")),
-        list(label = "Pathway \n downregulated", shape = "circle", color = list(background = "lightblue", border = "royalblue"))),
-        useGroups = FALSE) %>%
-      visOptions(highlightNearest = TRUE,
-                 selectedBy = list(variable = "edgesCount", highlight = TRUE),
-      ) %>%
-      visInteraction(zoomView = TRUE, hover = TRUE, hoverConnectedEdges = TRUE, tooltipDelay = 0, navigationButtons = TRUE) %>%
-      #visIgraphLayout() %>%
-      visPhysics(stabilization = FALSE)
-
-    
-    
-    # render GSEA Barplot
-    output$barplotGSEA <- renderPlot({
-      barplot
-    })
-    
-    # render Pathway network
-    output$pathway_network <- renderVisNetwork({
-      pathway_network
-    })
-    
-    # render the GSEA table
-    output$fgseaTable <- renderDT({
-      datatable(res, options = list(ordering = TRUE, order = list(1, 'asc'), pageLength = 5), rownames = FALSE)
-    })
-    
-    # Download button
-    output$downloadGSEATable <- downloadHandler(
-      database_clean_name <- sub("\\.txt$", "", file),
-      filename = function() {
-        paste("GSEA_", database_clean_name, ".csv", sep = "")
-      },
-      content = function(file) {
-        write.csv(res, file, row.names = FALSE, quote = FALSE)
+      pv = ifelse(fdr == TRUE,"padj","pval")
+      res = fgseaRes[which(fgseaRes[,pv] < cutpval),c("pathway", "padj","pval", "ES", "leadingEdge", "NES")]
+      res$genes = unlist(lapply(res$leadingEdge, function(x) paste(x, collapse = ", ")))
+      res = res[,c("pathway", pv, "ES","NES", "genes")]
+  
+      respos = res[res[,"ES"]>0,]
+      respos = respos[order(respos[,pv], decreasing = FALSE),]
+      
+      resneg = res[res[,"ES"]<0,]
+      resneg = resneg[order(resneg[,pv], decreasing = FALSE),]
+      
+      # Barplot
+      showCategory = 20
+      respos_plot <- respos[1:min(showCategory, nrow(respos)),]
+      resneg_plot <- resneg[1:min(showCategory, nrow(resneg)),]
+      
+      res_plot <- rbind(respos_plot, resneg_plot)
+      res_plot[,"pval"]<- res_plot[,pv]
+      
+      # Make a column with shorter pathway names for pathway too long, to avoid excessive axis text size
+      res_plot <- res_plot %>%
+        mutate(pathway_shortname = ifelse(nchar(pathway) > 35, paste0(str_sub(pathway, end = 35), "..."), pathway))
+      
+      res_plot$pathway <- factor(res_plot$pathway, levels=res_plot$pathway)
+      res_plot <- res_plot[order(res_plot[,"pval"], decreasing = TRUE),]
+      
+      barplot <- ggplot(res_plot, aes(x=reorder(pathway_shortname, -pval), y=-log10(pval), fill =NES))+
+        geom_bar(stat='identity') + 
+        scale_fill_gradient2(midpoint = 0, low = "blue", mid = "white", high = "red", limits=c(min(res_plot$NES), max(res_plot$NES))) +
+        labs(x = "Pathway") +
+        coord_flip() +
+        theme(axis.text = element_text(size = 12),
+              axis.title = element_text(size = 12))
+      
+      
+      # Pathway Network
+      fgseaRes <- fgseaRes %>%
+        filter(pval<0.05) # Keep only pathway significant (####change this later for res####)
+      
+      edges <- data.frame(from = character(), to = character(), NES = character())
+      nodes <- data.frame(id = character(), group = character())
+      
+      for (line in 1:nrow(fgseaRes)){
+        pathway <- fgseaRes[line,"pathway"]
+        leadingEdge <- as.vector(fgseaRes[line,"leadingEdge"][[1]])
+        for (gene in leadingEdge) {
+          
+          # add new edges
+          new_row <- data.frame(from = gene, to = fgseaRes[line,"pathway"], NES = ifelse(fgseaRes[line,"NES"] > 0, "up", "down"))
+          edges <- rbind(edges, new_row)
+        }
       }
-    )
+      
+      # count number of edges for each genes
+      edges_count <- edges %>%
+        group_by(from) %>%
+        mutate(edgesCount = n()) %>%
+        select(-to, -NES)
+      
+      
+      # add nodes + groups of nodes + number of edges for genes
+      for (edge in unique(edges$from)){
+        new_row <- data.frame(id = edge, group ="gene")
+        nodes <- rbind(nodes, new_row)
+      }
+      
+      for (edge in unique(edges$to)){
+        new_row <- data.frame(id = edge, group ="pathway")
+        nodes <- rbind(nodes, new_row)
+      }
+      
+      nodes <- left_join(x = nodes, y = edges, join_by(id == to)) %>%
+        select(-from) %>%
+        unique()
+      
+      
+      nodes <- left_join(x = nodes, y = edges_count, join_by(id == from)) %>%
+        unique()
+      
+      nodes$group <- ifelse(nodes$group == "pathway", 
+                            paste(nodes$group, nodes$NES, sep = "_"),
+                            nodes$group)
+      
+      nodes$NES = NULL
+      
+      # add titles to nodes for caption
+      nodes$title <- nodes$id
+      
     
-    # Make GSEA tabset appear
-    shinyjs::show("TabsetGSEA")
-    
-    # Second hint text for GSEA
-    output$GSEAtext2 <- renderText({
-      "Tips: Zoom in or hover on nodes to see the names of the genes/pathways"
-    })
-    
+      # Network
+      pathway_network <- visNetwork(nodes, edges) %>%
+        visGroups(groupname = "gene", color = list(background = "palegreen", border = "seagreen", hover = list(background = "seagreen", border = "forestgreen"), highlight = list(background = "palegreen", border = "black")), size = 25) %>%
+        visGroups(groupname = "pathway_up", color = list(background = "tomato", border = "firebrick", hover = list(background = "firebrick", border = "darkred"), highlight = list(background = "tomato", border = "black")), size = 50) %>%
+        visGroups(groupname = "pathway_down", color = list(background = "lightblue", border = "royalblue", hover = list(background = "royalblue", border = "darkblue"), highlight = list(background = "lightblue", border = "black")), size = 50) %>%
+        visLegend(addNodes = list(
+          list(label = "Gene", shape = "circle", color = list(background = "palegreen", border = "seagreen")),
+          list(label = "Pathway \n upregulated", shape = "circle", color = list(background = "tomato", border = "firebrick")),
+          list(label = "Pathway \n downregulated", shape = "circle", color = list(background = "lightblue", border = "royalblue"))),
+          useGroups = FALSE) %>%
+        visOptions(highlightNearest = TRUE,
+                   selectedBy = list(variable = "edgesCount", highlight = TRUE),
+        ) %>%
+        visInteraction(zoomView = TRUE, hover = TRUE, hoverConnectedEdges = TRUE, tooltipDelay = 0, navigationButtons = TRUE) %>%
+        #visIgraphLayout() %>%
+        visPhysics(stabilization = FALSE)
+  
+      
+      
+      # render GSEA Barplot
+      shinyjs::show("barplotGSEA")
+      output$barplotGSEA <- renderPlot({
+        barplot
+      })
+      
+      # render Pathway network
+      shinyjs::show("pathway_network")
+      output$pathway_network <- renderVisNetwork({
+        pathway_network
+      })
+      
+      # render the GSEA table
+      shinyjs::show("fgseaTable")
+      output$fgseaTable <- renderDT({
+        datatable(res, options = list(ordering = TRUE, order = list(1, 'asc'), pageLength = 5), rownames = FALSE)
+      })
+      
+      # Download button
+      output$downloadGSEATable <- downloadHandler(
+        database_clean_name <- sub("\\.txt$", "", file),
+        filename = function() {
+          paste("GSEA_", database_clean_name, ".csv", sep = "")
+        },
+        content = function(file) {
+          write.csv(res, file, row.names = FALSE, quote = FALSE)
+        }
+      )
+      
+      # Make GSEA tabset appear
+      shinyjs::show("TabsetGSEA")
+      
+      # Second hint text for GSEA
+      output$GSEAtext2 <- renderText({
+        "Tips: Zoom in or hover on nodes to see the names of the genes/pathways"
+      })
+      
+    }
   })
-
 }
 
 # Run the application
