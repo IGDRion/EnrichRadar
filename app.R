@@ -84,6 +84,8 @@ ui <- fluidPage(
   
   # Use dashboard for the application
   dashboardPage(
+    # WEBPAGE TITLE
+    title = "EnrichRadar",
     # HEADER
     dashboardHeader(title = span("EnrichRadar", style = "font-size: 40px"),
                     tags$li(class = "dropdown", actionButtonStyled(inputId = "HelpButton", 
