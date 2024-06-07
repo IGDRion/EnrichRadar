@@ -95,8 +95,8 @@ ui <- fluidPage(
     # SIDEBAR
     dashboardSidebar(
       # This layout contains all the controls for filtering and downloading the data
-      # Deseq2 output file input
-      fileInput("csv", "Choose DESeq2 Output File", accept = c(".csv")),
+      # Differential expression file input
+      fileInput("csv", "Choose an Input File", accept = c(".csv")),
       # Filtering by Log2FoldChange & padj
       sliderInput(inputId = "thresholdSliderLOG2FC",
                   label = "Log2FoldChange Threshold: ",
@@ -282,7 +282,7 @@ server <- function(input, output, session) {
   
   # Main text for Gprofiler analysis
   output$starterText <- renderText({
-    "Click on \"Browse\" button of the side panel and choose your DESeq2 output file to start"
+    "Click on \"Browse\" button of the side panel and choose your Differential Expression file to start"
   })
   
   # Hide buttons until data is loaded
@@ -457,7 +457,7 @@ server <- function(input, output, session) {
   # Download handler
   output$downloadMainTable <- downloadHandler(
     filename = function() {
-      paste("DESeq2Viewer_LOG2FC_", input$thresholdSliderLOG2FC, "_PADJ_", input$thresholdSliderPADJ, ".csv", sep = "")
+      paste("EnrichRadar_LOG2FC_", input$thresholdSliderLOG2FC, "_PADJ_", input$thresholdSliderPADJ, ".csv", sep = "")
     },
     content = function(file) {
       write.csv(filtered_data(), file, row.names = FALSE, quote = FALSE)
