@@ -114,13 +114,19 @@ ui <- fluidPage(
                                "Up Regulated" = "up"),
                    selected = "both"),
       # Filtering by coding genes or not
-      checkboxInput(inputId = "KeepCodingGenes",
-                    label = "Show only protein coding genes",
-                    value = FALSE),
+      radioButtons(inputId = "biotype",
+                   label = "Biotype:",
+                   choices = c("All" = "all",
+                               "Protein Coding" = "PCG",
+                               "lncRNA" = "lncRNA"),
+                   selected = "all"),
       # Filtering by known genes or not
-      checkboxInput(inputId = "KeepKnownGenes",
-                    label = "Show only known genes",
-                    value = FALSE)
+      radioButtons(inputId = "NoveltyStatus",
+                   label = "Novelty status:",
+                   choices = c("All" = "all",
+                               "Known" = "known",
+                               "Novel" = "new"),
+                   selected = "all")
       ),
       # End of sidebar panel
     
@@ -181,7 +187,7 @@ ui <- fluidPage(
                            label = "Choose a specie",
                            choices = c("Human","Dog"),
                            selected = "Human",
-                           width = "200px"))
+                           width = "150px"))
       ),
       fluidRow(
         column(12, align = "center", 
@@ -217,7 +223,9 @@ ui <- fluidPage(
         column(6, align = "left",
                selectInput(inputId = "chooseGSEADB",
                            label = "Choose a database",
-                           choices = c("GO:MF","GO:CC","GO:BP","KEGG","REACTOME","WikiPathways","TRANSFAC & JASPAR PWMs","miRTarBase","CORUM","Human Phenotype Ontology"),
+                           choices = c("GO:MF","GO:CC","GO:BP","KEGG","Fantom6 lncRNA","lncHUB lncRNA",
+                                       "MSigDB Computational","MSigDB Hallmark","MSigDB Oncogenic Signatures",
+                                       "REACTOME","WikiPathways","TRANSFAC & JASPAR PWMs","miRTarBase","CORUM","Human Phenotype Ontology"),
                            width = "200px")),
       ),
       fluidRow(
@@ -277,7 +285,6 @@ server <- function(input, output, session) {
   observeEvent(input$QuitHelp, {
     removeModal()
   })
-  
   
   
   # Main text for Gprofiler analysis
@@ -370,9 +377,9 @@ server <- function(input, output, session) {
     
     # Show biotype buttons in the filter panel if there is a "gene_biotype" column in the uploaded dataframe
     if ("gene_biotype" %in% col_names()){
-      shinyjs::show("KeepCodingGenes")
+      shinyjs::show("biotype")
     } else{
-      shinyjs::hide("KeepCodingGenes")
+      shinyjs::hide("biotype")
     }
     
     # Check if the input file is valid, if not, print an error message to the screen and hide all buttons
@@ -382,19 +389,7 @@ server <- function(input, output, session) {
       file_check = "bad_file"
     }
     
-    # Change the name of column to which the filters are applied depending if DESeq2 or edgeR
-    if (file_check == "good_file"){
-      shinyjs::hide("wrongDATAmessage")
-      # To filter dataframe with chosen thresholds in Log2FoldChange & padj with DESeq2 data
-      if (input$DEside == "both") {
-        filtered_data <- data()[abs(data()$log2FoldChange) >= thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
-      } else if (input$DEside == "up") {
-        filtered_data <- data()[data()$log2FoldChange >= thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
-      } else if (input$DEside == "down") {
-        filtered_data <- data()[data()$log2FoldChange <= 0-thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
-      }
-      
-    } else if (file_check == "bad_file"){
+    if (file_check == "bad_file"){
       # If the data uploaded are not good (not deseq2 or edgeR, or something else entirely, print a error message and hide all the UI)
         filtered_data <- NULL
         output$wrongDATAmessage <- renderText({
@@ -417,7 +412,19 @@ server <- function(input, output, session) {
         shinyjs::show("wrongDATAmessage")
         
         return(filtered_data)
-    }
+        
+        
+    } else if (file_check == "good_file"){
+      
+      shinyjs::hide("wrongDATAmessage")
+      # To filter dataframe with chosen thresholds in Log2FoldChange & padj with DESeq2 data
+      if (input$DEside == "both") {
+        filtered_data <- data()[abs(data()$log2FoldChange) >= thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
+      } else if (input$DEside == "up") {
+        filtered_data <- data()[data()$log2FoldChange >= thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
+      } else if (input$DEside == "down") {
+        filtered_data <- data()[data()$log2FoldChange <= 0-thresholdLOG2FC & data()$padj <= thresholdPADJ, ]
+      }
   
     
     # To avoid getting empty rows when moving thresholds: keeps only rows when the full line is not empty
@@ -434,14 +441,25 @@ server <- function(input, output, session) {
         filtered_data <- data()
       }
     }
-    if (input$KeepCodingGenes == TRUE) {
+    if (input$biotype == "all") {
+      filtered_data <- filtered_data
+    } else if (input$biotype == "lncRNA") {
+      filtered_data <- filtered_data[filtered_data$gene_biotype == "lncRNA",]
+    } else if (input$biotype == "PCG") {
       filtered_data <- filtered_data[filtered_data$gene_biotype == "protein_coding",]
     }
-    if (input$KeepKnownGenes == TRUE) {
+    
+    if (input$biotype == "all") {
+      filtered_data <- filtered_data
+    } else if (input$NoveltyStatus == "known") {
       filtered_data <- filtered_data[grepl("^(ENS|NM|NR)", filtered_data$geneID), ] # Keep only gene ID starting with prefix of Ensembl or RefSeq
+    } else if (input$NoveltyStatus == "new") {
+      filtered_data <- filtered_data[!grepl("^(ENS|NM|NR)", filtered_data$geneID), ] # Keep only gene ID starting with prefix of Ensembl or RefSeq
     }
     
     return(filtered_data)
+    
+    }
   })
   
   # Title to the table (file name)
@@ -819,7 +837,17 @@ server <- function(input, output, session) {
         file <- "CORUM.txt"
       } else if (input$chooseGSEADB == "Human Phenotype Ontology"){
         file <- "Human_Phenotype_Ontology.txt"
-      }
+      } else if (input$chooseGSEADB == "Fantom6 lncRNA"){
+        file <- "FANTOM6_lncRNA_KD_DEGs.txt"
+      } else if (input$chooseGSEADB == "lncHUB lncRNA"){
+        file <- "lncHUB_lncRNA_Co-Expression.txt"
+      } else if (input$chooseGSEADB == "MSigDB Computational"){
+        file <- "MSigDB_Computational.txt"
+      } else if (input$chooseGSEADB == "MSigDB Hallmark"){
+        file <- "MSigDB_Hallmark_2020.txt"
+      } else if (input$chooseGSEADB == "MSigDB Oncogenic Signatures"){
+        file <- "MSigDB_Oncogenic_Signatures.txt"
+      } 
       
       pathways <- processDB(paste0("./enrichR_databases/",file))
       
